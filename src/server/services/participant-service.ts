@@ -165,6 +165,17 @@ export async function listParticipants(
     };
   });
 
+  // Urutkan: Peserta terpilih diurutkan berdasarkan sortOrder mereka,
+  // sedangkan yang belum terpilih mengikuti rowNumber aslinya.
+  items.sort((a, b) => {
+    if (a.isSelected && b.isSelected) {
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    }
+    if (a.isSelected) return -1;
+    if (b.isSelected) return 1;
+    return a.rowNumber - b.rowNumber;
+  });
+
   return {
     participants: items,
     availableTeams: Array.from(teamSet).sort(),
@@ -335,6 +346,23 @@ export async function updateReportParticipantsSelection(
   const targetIds = input.selectedParticipantIds;
 
   await db.transaction(async (tx) => {
+    // Preserve existing narrative & metadata before replacing records
+    const existingRows = await tx
+      .select({
+        participantId: reportParticipants.participantId,
+        rulesNarrative: reportParticipants.rulesNarrative,
+        aiNarrative: reportParticipants.aiNarrative,
+        narrative: reportParticipants.narrative,
+        aiMetadata: reportParticipants.aiMetadata,
+        visitDate: reportParticipants.visitDate,
+      })
+      .from(reportParticipants)
+      .where(eq(reportParticipants.reportId, reportId));
+
+    const existingMap = new Map(
+      existingRows.map((row) => [row.participantId, row]),
+    );
+
     await tx
       .delete(reportParticipants)
       .where(eq(reportParticipants.reportId, reportId));
@@ -357,12 +385,19 @@ export async function updateReportParticipantsSelection(
           const part = partMap.get(pid);
           if (!part) return null;
           const norm = part.normalizedData as Record<string, unknown>;
+          const existing = existingMap.get(pid);
+
           return {
             reportId,
             participantId: pid,
             sortOrder: idx,
             visitDate:
-              typeof norm.interviewDate === "string" ? norm.interviewDate : null,
+              existing?.visitDate ??
+              (typeof norm.interviewDate === "string" ? norm.interviewDate : null),
+            rulesNarrative: existing?.rulesNarrative ?? null,
+            aiNarrative: existing?.aiNarrative ?? null,
+            narrative: existing?.narrative ?? null,
+            aiMetadata: existing?.aiMetadata ?? null,
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null);

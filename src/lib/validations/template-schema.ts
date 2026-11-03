@@ -13,6 +13,8 @@ export const templateHeaderSchema = z.object({
   titleFontSizePt: z.number().min(8).max(24).optional().default(11),
   titleFontWeight: z.enum(["normal", "bold", "500", "600"]).optional().default("bold"),
   titleLetterSpacing: z.string().optional().default("0.5px"),
+  titleItalic: z.boolean().optional().default(false),
+  titleUnderline: z.boolean().optional().default(false),
 
   // Tipografi Judul Kop / Cover Atas
   ministryFontFamily: z.string().optional().default("Arial, sans-serif"),
@@ -77,6 +79,7 @@ export const updateTemplateSchema = z.object({
   name: z.string().trim().min(3).optional(),
   description: z.string().trim().optional(),
   isActive: z.boolean().optional(),
+  configuration: templateConfigurationSchema.optional(),
 });
 
 export const createTemplateVersionSchema = z.object({

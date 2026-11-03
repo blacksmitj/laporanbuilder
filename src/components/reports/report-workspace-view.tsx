@@ -60,7 +60,7 @@ export interface ReportDetailSerialized {
   id: string;
   name: string;
   reportType: string;
-  templateVersionId?: string | null;
+  templateId?: string | null;
   definitionVersion: number;
   fiscalYear: number;
   status: ReportStatus;
@@ -104,31 +104,29 @@ export interface ReportDetailSerialized {
   }>;
 }
 
-export interface TemplateVersionOption {
+export interface TemplateOption {
   id: string;
-  version: number;
-  templateName: string;
-  createdAt: string | Date;
+  name: string;
 }
 
 interface ReportWorkspaceViewProps {
   report: ReportDetailSerialized;
   availableOfficials: OfficialItem[];
-  availableTemplateVersions?: TemplateVersionOption[];
+  availableTemplates?: TemplateOption[];
 }
 
 export function ReportWorkspaceView({
   report,
   availableOfficials,
-  availableTemplateVersions = [],
+  availableTemplates = [],
 }: ReportWorkspaceViewProps) {
   const router = useRouter();
   const definition = requireReportType(report.reportType);
 
   const [reportName, setReportName] = useState(report.name);
   const [fiscalYear, setFiscalYear] = useState(report.fiscalYear);
-  const [templateVersionId, setTemplateVersionId] = useState<string | null>(
-    report.templateVersionId ?? null,
+  const [templateId, setTemplateId] = useState<string | null>(
+    report.templateId ?? null,
   );
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
     () => ({
@@ -190,7 +188,7 @@ export function ReportWorkspaceView({
         body: JSON.stringify({
           name: reportName.trim(),
           fiscalYear,
-          templateVersionId,
+          templateId,
           metadata: parsedMeta.data,
           officials,
           expectedVersion: currentVersion,
@@ -444,10 +442,10 @@ export function ReportWorkspaceView({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <FieldLabel htmlFor="workspace-template-version" className="font-semibold text-sm">
-                  Versi Template &amp; Kop Surat Dokumen
+                  Template Dokumen Resmi
                 </FieldLabel>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Tentukan versi kop surat &amp; tata letak yang digunakan saat membuat PDF dan pratinjau.
+                  Pilih master template kop surat &amp; tata letak yang digunakan untuk mencetak laporan ini.
                 </p>
               </div>
               <Link
@@ -459,22 +457,16 @@ export function ReportWorkspaceView({
             </div>
 
             <NativeSelect
-              id="workspace-template-version"
-              value={templateVersionId ?? ""}
-              onChange={(e) => setTemplateVersionId(e.target.value ? e.target.value : null)}
+              id="workspace-template"
+              value={templateId ?? ""}
+              onChange={(e) => setTemplateId(e.target.value ? e.target.value : null)}
             >
               <NativeSelectOption value="">
-                Versi Otomatis / Terbaru (Direkomendasikan)
+                Template Standar / Otomatis (Direkomendasikan)
               </NativeSelectOption>
-              {availableTemplateVersions.map((v) => (
-                <NativeSelectOption key={v.id} value={v.id}>
-                  {v.templateName} &bull; Versi #{v.version} (
-                  {new Date(v.createdAt).toLocaleDateString("id-ID", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                  )
+              {availableTemplates.map((t) => (
+                <NativeSelectOption key={t.id} value={t.id}>
+                  {t.name}
                 </NativeSelectOption>
               ))}
             </NativeSelect>

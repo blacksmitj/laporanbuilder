@@ -80,6 +80,8 @@ export const defaultLpdMonevTkmTemplate: TemplateConfiguration = {
     titleFontSizePt: 11,
     titleFontWeight: "bold",
     titleLetterSpacing: "0.5px",
+    titleItalic: false,
+    titleUnderline: false,
     ministryFontFamily: "Arial, sans-serif",
     ministryFontSizePt: 10.5,
     ministryFontWeight: "normal",

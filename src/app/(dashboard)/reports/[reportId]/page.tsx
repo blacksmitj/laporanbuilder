@@ -20,22 +20,19 @@ export default async function ReportWorkspacePage({
       listTemplates(),
     ]);
 
-    // Ambil daftar versi template yang cocok untuk reportType laporan ini
-    const relevantTemplates = templates.filter((t) => t.reportType === report.reportType);
-    const availableVersions = relevantTemplates.flatMap((t) =>
-      t.versions.map((v) => ({
-        id: v.id,
-        version: v.version,
-        templateName: t.name,
-        createdAt: v.createdAt,
-      })),
+    // Ambil daftar template yang cocok untuk reportType laporan ini
+    const relevantTemplates = templates.filter(
+      (t) => t.reportType === report.reportType,
     );
 
     return (
       <ReportWorkspaceView
         report={report}
         availableOfficials={officials}
-        availableTemplateVersions={availableVersions}
+        availableTemplates={relevantTemplates.map((t) => ({
+          id: t.id,
+          name: t.name,
+        }))}
       />
     );
   } catch (error) {
@@ -45,4 +42,3 @@ export default async function ReportWorkspacePage({
     throw error;
   }
 }
-

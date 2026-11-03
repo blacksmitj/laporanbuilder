@@ -258,9 +258,18 @@ export async function createReport(input: CreateReportInput, actor: Actor) {
       })
       .returning();
 
-    if (input.officials && input.officials.length > 0) {
+    const officialsList =
+      input.officials && input.officials.length > 0
+        ? input.officials
+        : (input.officialIds || []).map((id, idx) => ({
+            officialId: id,
+            sortOrder: idx,
+            signingEnabled: true,
+          }));
+
+    if (officialsList.length > 0) {
       const uniqueOfficialIds = new Set<string>();
-      const officialRows = input.officials
+      const officialRows = officialsList
         .filter((item) => {
           if (uniqueOfficialIds.has(item.officialId)) return false;
           uniqueOfficialIds.add(item.officialId);
@@ -357,9 +366,11 @@ export async function updateReport(
           ? { fiscalYear: input.fiscalYear }
           : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
-        ...(input.templateVersionId !== undefined
-          ? { templateVersionId: input.templateVersionId }
-          : {}),
+        ...(input.templateId !== undefined
+          ? { templateId: input.templateId }
+          : input.templateVersionId !== undefined
+            ? { templateId: input.templateVersionId }
+            : {}),
         ...(input.metadata !== undefined
           ? { metadata: validatedMetadata }
           : {}),

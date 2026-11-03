@@ -19,6 +19,7 @@ interface ReportWizardStepperProps {
   participantCount?: number;
   selectedParticipantCount?: number;
   pdfCount?: number;
+  hasPdf?: boolean;
 }
 
 export function ReportWizardStepper({
@@ -27,9 +28,11 @@ export function ReportWizardStepper({
   participantCount = 0,
   selectedParticipantCount = 0,
   pdfCount = 0,
+  hasPdf = false,
 }: ReportWizardStepperProps) {
   const pathname = usePathname();
   const basePath = `/reports/${reportId}`;
+  const isPdfReady = hasPdf || pdfCount > 0;
 
   const steps = [
     {
@@ -73,11 +76,10 @@ export function ReportWizardStepper({
     {
       step: 5,
       label: "Preview & Export PDF",
-      description:
-        pdfCount > 0 ? `${pdfCount} versi PDF` : "Cetak dokumen A4",
+      description: isPdfReady ? "Dokumen PDF siap" : "Cetak dokumen A4",
       href: `${basePath}/preview`,
       icon: Eye,
-      done: pdfCount > 0,
+      done: isPdfReady,
     },
   ];
 
@@ -138,4 +140,3 @@ export function ReportWizardStepper({
     </nav>
   );
 }
-

@@ -1,21 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { handleApiError, requireUser } from "@/server/permissions";
-import {
-  generateReportPdf,
-  listReportPdfFiles,
-} from "@/server/services/pdf-service";
 import { templateConfigurationSchema } from "@/lib/validations/template-schema";
 import type { TemplateConfiguration } from "@/report-types/types";
+import { handleApiError, requireUser } from "@/server/permissions";
+import { generateReportPdf } from "@/server/services/pdf-service";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     const actor = await requireUser();
     const { id } = await context.params;
-    const data = await listReportPdfFiles(id, actor);
-    return NextResponse.json({ data });
+    const url = new URL(request.url);
+    const templateId = url.searchParams.get("templateId") ?? undefined;
+
+    const { buffer, filename } = await generateReportPdf(id, actor, templateId);
+
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": buffer.length.toString(),
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -28,14 +36,14 @@ export async function POST(
   try {
     const actor = await requireUser();
     const { id } = await context.params;
-    let templateVersionId: string | null | undefined = undefined;
+    let templateId: string | null | undefined = undefined;
     let overrideConfig: TemplateConfiguration | null = null;
 
     try {
       const body = await request.json();
       if (body && typeof body === "object") {
-        if ("templateVersionId" in body) {
-          templateVersionId = body.templateVersionId;
+        if ("templateId" in body) {
+          templateId = body.templateId;
         }
         if ("configuration" in body && body.configuration) {
           const parsed = templateConfigurationSchema.safeParse(body.configuration);
@@ -48,13 +56,21 @@ export async function POST(
       // Body might be empty for simple POST
     }
 
-    const data = await generateReportPdf(
+    const { buffer, filename } = await generateReportPdf(
       id,
       actor,
-      templateVersionId,
+      templateId,
       overrideConfig,
     );
-    return NextResponse.json({ data }, { status: 201 });
+
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": buffer.length.toString(),
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

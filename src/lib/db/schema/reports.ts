@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { reportTemplateVersions } from "./templates";
+import { reportTemplates } from "./templates";
 import { users } from "./users";
 
 export type ReportStatus = "draft" | "generated" | "archived";
@@ -27,8 +27,8 @@ export const reports = pgTable(
       .$type<Record<string, unknown>>()
       .default({})
       .notNull(),
-    templateVersionId: uuid("template_version_id").references(
-      () => reportTemplateVersions.id,
+    templateId: uuid("template_id").references(
+      () => reportTemplates.id,
       { onDelete: "set null" },
     ),
     version: integer("version").default(1).notNull(),
@@ -120,4 +120,3 @@ export const reportContents = pgTable(
     ),
   ],
 );
-

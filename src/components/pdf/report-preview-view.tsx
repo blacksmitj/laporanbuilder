@@ -5,18 +5,14 @@ import {
   ArrowLeft,
   CheckCircle2,
   Download,
-  History,
   Loader2,
   Printer,
-  SlidersHorizontal,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import {
-  PreviewTemplateDialog,
-  type TemplateVersionOption,
-} from "@/components/pdf/preview-template-dialog";
+import { useEffect, useRef, useState } from "react";
+import { PreviewTemplatePanel } from "@/components/pdf/preview-template-panel";
 import { ReportWizardStepper } from "@/components/reports/report-wizard-stepper";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,36 +25,17 @@ import {
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import type { TemplateConfigurationInput } from "@/lib/validations/template-schema";
-
-export interface ReportPdfFileItem {
-  id: string;
-  reportId: string;
-  snapshotId: string;
-  filename: string;
-  fileSize: number;
-  status: string;
-  generatedAt: string | Date;
-}
+import { cn } from "@/lib/utils";
 
 interface ReportPreviewViewProps {
   reportId: string;
   reportName: string;
   participantCount: number;
   selectedParticipantCount: number;
-  initialFiles: ReportPdfFileItem[];
-  currentTemplateVersionId?: string | null;
-  availableTemplateVersions?: TemplateVersionOption[];
+  isGenerated?: boolean;
   templateId?: string | null;
   initialTemplateConfig?: TemplateConfigurationInput | null;
   isAdmin?: boolean;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
 export function ReportPreviewView({
@@ -66,22 +43,13 @@ export function ReportPreviewView({
   reportName,
   participantCount,
   selectedParticipantCount,
-  initialFiles,
-  currentTemplateVersionId = null,
-  availableTemplateVersions = [],
+  isGenerated = false,
   templateId = null,
   initialTemplateConfig = null,
   isAdmin = false,
 }: ReportPreviewViewProps) {
   const router = useRouter();
-  const [files, setFiles] = useState<ReportPdfFileItem[]>(initialFiles);
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-  const [activeVersionId, setActiveVersionId] = useState<string | null>(
-    currentTemplateVersionId,
-  );
-  const [versions, setVersions] = useState<TemplateVersionOption[]>(
-    availableTemplateVersions,
-  );
+  const [hasGenerated, setHasGenerated] = useState<boolean>(isGenerated);
   const [currentConfig, setCurrentConfig] = useState<TemplateConfigurationInput | null>(
     initialTemplateConfig,
   );
@@ -91,25 +59,26 @@ export function ReportPreviewView({
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Fetch preview HTML whenever version or custom config changes
+  // Debounce timer reference
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch preview HTML whenever template configuration changes
   const fetchPreviewHtml = async (
     configToUse?: TemplateConfigurationInput | null,
-    versionIdToUse?: string | null,
   ) => {
     setIsLoadingPreview(true);
     setPreviewError(null);
     try {
       let res: Response;
-      // Jika ada custom config draf hasil "Coba di Preview", gunakan POST
       if (configToUse) {
         res = await fetch(`/api/reports/${reportId}/pdf/preview-html`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ configuration: configToUse }),
+          body: JSON.stringify({ configuration: configToUse, templateId }),
         });
       } else {
-        const url = versionIdToUse
-          ? `/api/reports/${reportId}/pdf/preview-html?templateVersionId=${versionIdToUse}&t=${Date.now()}`
+        const url = templateId
+          ? `/api/reports/${reportId}/pdf/preview-html?templateId=${templateId}&t=${Date.now()}`
           : `/api/reports/${reportId}/pdf/preview-html?t=${Date.now()}`;
         res = await fetch(url);
       }
@@ -129,33 +98,72 @@ export function ReportPreviewView({
   };
 
   useEffect(() => {
-    fetchPreviewHtml(currentConfig, activeVersionId);
+    fetchPreviewHtml(currentConfig);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, []);
 
-  const generateMutation = useMutation({
+  const handleConfigChange = (newConfig: TemplateConfigurationInput) => {
+    setCurrentConfig(newConfig);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      fetchPreviewHtml(newConfig);
+    }, 400);
+  };
+
+  const generateAndDownloadMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/reports/${reportId}/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateVersionId: activeVersionId,
+          templateId,
           configuration: currentConfig,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Gagal men-generate PDF.");
-      return json.data as {
-        snapshot: { id: string; version: number };
-        file: ReportPdfFileItem;
-      };
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error ?? "Gagal men-generate PDF.");
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("Content-Disposition");
+      let downloadFilename = `${reportName.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`;
+
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          downloadFilename = match[1];
+        }
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadFilename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(blobUrl);
+      link.remove();
+
+      return downloadFilename;
     },
-    onSuccess: (data) => {
+    onSuccess: (filename) => {
       toast.add({
-        title: "PDF Berhasil Dibuat",
-        description: `Dokumen versi #${data.snapshot.version} tersimpan ke S3 (${formatBytes(data.file.fileSize)}).`,
+        title: "PDF Berhasil Diunduh",
+        description: `Dokumen terkini '${filename}' berhasil di-generate dan langsung diunduh.`,
         type: "success",
       });
-      setFiles((prev) => [data.file, ...prev]);
+      setHasGenerated(true);
       router.refresh();
     },
     onError: (err: Error) => {
@@ -183,10 +191,10 @@ export function ReportPreviewView({
               Workspace
             </Button>
             <Badge variant="outline">Tahap 5 — Preview &amp; Export PDF</Badge>
-            {files.length > 0 && (
+            {hasGenerated && (
               <Badge className="bg-emerald-600 gap-1 text-white">
                 <CheckCircle2 className="size-3" />
-                {files.length} Versi PDF Siap
+                PDF Telah Diterbitkan
               </Badge>
             )}
           </div>
@@ -194,37 +202,25 @@ export function ReportPreviewView({
             {reportName}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Pratinjau visual HTML dokumen A4 identik dengan cetakan Playwright
-            Chromium. Anda dapat menyesuaikan template &amp; kop surat langsung dari sini.
+            Pratinjau visual HTML dokumen A4 identik dengan cetakan Playwright Chromium. Anda dapat langsung mengedit tata letak dan kop di panel kiri.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {initialTemplateConfig && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setTemplateDialogOpen(true)}
-            >
-              <SlidersHorizontal className="mr-1.5 size-4" />
-              Atur Template / Kop Surat
-            </Button>
-          )}
-
           <Button
             size="sm"
-            disabled={generateMutation.isPending}
-            onClick={() => generateMutation.mutate()}
+            disabled={generateAndDownloadMutation.isPending}
+            onClick={() => generateAndDownloadMutation.mutate()}
           >
-            {generateMutation.isPending ? (
+            {generateAndDownloadMutation.isPending ? (
               <>
                 <Loader2 className="mr-1.5 size-4 animate-spin" />
-                Men-generate PDF...
+                Men-generate &amp; Mengunduh PDF...
               </>
             ) : (
               <>
-                <Printer className="mr-1.5 size-4" />
-                Generate Dokumen PDF Final
+                <Download className="mr-1.5 size-4" />
+                Generate &amp; Unduh PDF
               </>
             )}
           </Button>
@@ -236,108 +232,68 @@ export function ReportPreviewView({
         hasImportBatch={participantCount > 0}
         participantCount={participantCount}
         selectedParticipantCount={selectedParticipantCount}
-        pdfCount={files.length}
+        hasPdf={hasGenerated}
       />
 
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* Riwayat Versi PDF */}
-        <div className="space-y-4 lg:col-span-1">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <History className="size-4" />
-                Arsip Versi PDF ({files.length})
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Tersimpan di S3/RustFS. Klik untuk mengunduh.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {files.length === 0 ? (
-                <div className="py-6 text-center text-xs text-muted-foreground">
-                  Belum ada PDF yang di-generate. Klik tombol di atas untuk
-                  membuat PDF versi pertama.
-                </div>
-              ) : (
-                files.map((file, idx) => (
-                  <div
-                    key={file.id}
-                    className="flex flex-col gap-2 rounded-lg border p-3 text-xs"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">
-                        Versi #{files.length - idx}
-                      </span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {formatBytes(file.fileSize)}
-                      </Badge>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {file.filename}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {new Date(file.generatedAt).toLocaleString("id-ID", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </div>
-                    <Button
-                      size="xs"
-                      variant="secondary"
-                      className="mt-1 w-full gap-1.5"
-                      nativeButton={false}
-                      render={
-                        <a
-                          href={`/api/reports/${reportId}/pdf/${file.id}`}
-                          download
-                        />
-                      }
-                    >
-                      <Download className="size-3.5" />
-                      Unduh PDF
-                    </Button>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      {/* Grid: Kiri Pengaturan Template, Kanan Live Preview */}
+      <div className="grid gap-6 lg:grid-cols-12 items-start">
+        {currentConfig && (
+          <div className="lg:col-span-5 xl:col-span-4 sticky top-4">
+            <PreviewTemplatePanel
+              templateId={templateId}
+              config={currentConfig}
+              onChange={handleConfigChange}
+              isAdmin={isAdmin}
+              onSaveMasterSuccess={(savedConfig) => {
+                setCurrentConfig(savedConfig);
+                fetchPreviewHtml(savedConfig);
+              }}
+            />
+          </div>
+        )}
 
-        {/* Live Preview Iframe */}
-        <div className="lg:col-span-3">
-          <Card className="overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 py-3">
+        {/* Live Preview Panel Kanan */}
+        <div
+          className={cn(
+            currentConfig ? "lg:col-span-7 xl:col-span-8" : "lg:col-span-12",
+          )}
+        >
+          <Card className="overflow-hidden border bg-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 py-2.5 px-4">
               <div>
                 <CardTitle className="text-sm font-semibold">
                   Pratinjau Dokumen Cetak A4 (Live HTML View)
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Merender struktur kop, tabel hasil kunjungan berlanjut, dan
-                  tanda tangan sesuai template aktif.
+                  Merender struktur dokumen cetak A4 sesuai pengaturan kop dan halaman di sebelah kiri.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {initialTemplateConfig && (
-                  <Button
-                    size="xs"
-                    variant="secondary"
-                    onClick={() => setTemplateDialogOpen(true)}
-                  >
-                    <SlidersHorizontal className="mr-1 size-3" />
-                    Kop Surat &amp; Layout
-                  </Button>
-                )}
                 <Button
                   size="xs"
                   variant="outline"
                   disabled={isLoadingPreview}
-                  onClick={() => fetchPreviewHtml(currentConfig, activeVersionId)}
+                  onClick={() => fetchPreviewHtml(currentConfig)}
                 >
                   {isLoadingPreview ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin mr-1" />
                   ) : (
-                    "Muat Ulang Preview"
+                    <RefreshCw className="size-3 mr-1" />
                   )}
+                  Muat Ulang
+                </Button>
+                <Button
+                  size="xs"
+                  variant="default"
+                  disabled={generateAndDownloadMutation.isPending}
+                  onClick={() => generateAndDownloadMutation.mutate()}
+                >
+                  {generateAndDownloadMutation.isPending ? (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  ) : (
+                    <Printer className="mr-1 size-3" />
+                  )}
+                  Generate &amp; Unduh PDF
                 </Button>
               </div>
             </CardHeader>
@@ -366,42 +322,6 @@ export function ReportPreviewView({
           </Card>
         </div>
       </div>
-
-      {initialTemplateConfig && (
-        <PreviewTemplateDialog
-          open={templateDialogOpen}
-          onOpenChange={setTemplateDialogOpen}
-          reportId={reportId}
-          templateId={templateId}
-          currentTemplateVersionId={activeVersionId}
-          availableVersions={versions}
-          initialConfig={currentConfig || initialTemplateConfig}
-          isAdmin={isAdmin}
-          onApplyTemporaryConfig={(newConfig) => {
-            setCurrentConfig(newConfig);
-            fetchPreviewHtml(newConfig, activeVersionId);
-          }}
-          onVersionChanged={(verId) => {
-            setActiveVersionId(verId);
-            setCurrentConfig(null);
-            fetchPreviewHtml(null, verId);
-          }}
-          onConfigSaved={(newVerId, newConfig) => {
-            setActiveVersionId(newVerId);
-            setCurrentConfig(newConfig);
-            setVersions((prev) => [
-              {
-                id: newVerId,
-                version: prev.length + 1,
-                templateName: "Template Standar",
-                createdAt: new Date(),
-              },
-              ...prev,
-            ]);
-            fetchPreviewHtml(newConfig, newVerId);
-          }}
-        />
-      )}
     </div>
   );
 }

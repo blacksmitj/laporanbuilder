@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { handleApiError, requireUser } from "@/server/permissions";
-import { getReportHtmlPreview } from "@/server/services/pdf-service";
 import { templateConfigurationSchema } from "@/lib/validations/template-schema";
 import type { TemplateConfiguration } from "@/report-types/types";
+import { handleApiError, requireUser } from "@/server/permissions";
+import { getReportPreviewHtml } from "@/server/services/pdf-service";
 
 export async function GET(
   request: NextRequest,
@@ -12,12 +12,12 @@ export async function GET(
     const actor = await requireUser();
     const { id } = await context.params;
     const url = new URL(request.url);
-    const templateVersionId = url.searchParams.get("templateVersionId");
+    const templateId = url.searchParams.get("templateId");
 
-    const html = await getReportHtmlPreview(
+    const html = await getReportPreviewHtml(
       id,
       actor,
-      templateVersionId !== null ? templateVersionId : undefined,
+      templateId !== null ? templateId : undefined,
     );
 
     return new NextResponse(html, {
@@ -41,6 +41,12 @@ export async function POST(
     const body = await request.json();
 
     let overrideConfig: TemplateConfiguration | null = null;
+    let templateId: string | null | undefined = undefined;
+
+    if (body?.templateId) {
+      templateId = body.templateId;
+    }
+
     if (body?.configuration) {
       const parsed = templateConfigurationSchema.safeParse(body.configuration);
       if (parsed.success) {
@@ -48,10 +54,10 @@ export async function POST(
       }
     }
 
-    const html = await getReportHtmlPreview(
+    const html = await getReportPreviewHtml(
       id,
       actor,
-      undefined,
+      templateId,
       overrideConfig,
     );
 

@@ -365,6 +365,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       font-family: ${header.titleFontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
       font-size: ${header.titleFontSizePt ?? 11}pt;
       font-weight: ${header.titleFontWeight || "bold"};
+      font-style: ${header.titleItalic ? "italic" : "normal"};
+      text-decoration: ${header.titleUnderline ? "underline" : "none"};
       text-transform: uppercase;
       letter-spacing: ${header.titleLetterSpacing || "0.5px"};
     }

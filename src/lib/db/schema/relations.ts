@@ -12,7 +12,7 @@ import {
   reports,
 } from "./reports";
 import { auditLogs, reportFiles, reportSnapshots } from "./snapshots";
-import { reportTemplates, reportTemplateVersions } from "./templates";
+import { reportTemplates } from "./templates";
 import { accounts, sessions, users } from "./users";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -40,17 +40,6 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 export const reportTemplatesRelations = relations(
   reportTemplates,
   ({ many }) => ({
-    versions: many(reportTemplateVersions),
-  }),
-);
-
-export const reportTemplateVersionsRelations = relations(
-  reportTemplateVersions,
-  ({ one, many }) => ({
-    template: one(reportTemplates, {
-      fields: [reportTemplateVersions.templateId],
-      references: [reportTemplates.id],
-    }),
     reports: many(reports),
   }),
 );
@@ -60,9 +49,9 @@ export const reportsRelations = relations(reports, ({ one, many }) => ({
     fields: [reports.createdBy],
     references: [users.id],
   }),
-  templateVersion: one(reportTemplateVersions, {
-    fields: [reports.templateVersionId],
-    references: [reportTemplateVersions.id],
+  template: one(reportTemplates, {
+    fields: [reports.templateId],
+    references: [reportTemplates.id],
   }),
   importBatches: many(importBatches),
   participants: many(participants),
@@ -186,4 +175,3 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     references: [reports.id],
   }),
 }));
-

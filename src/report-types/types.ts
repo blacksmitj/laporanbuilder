@@ -61,6 +61,8 @@ export interface TemplateHeaderConfig {
   titleFontSizePt?: number;
   titleFontWeight?: "normal" | "bold" | "500" | "600";
   titleLetterSpacing?: string;
+  titleItalic?: boolean;
+  titleUnderline?: boolean;
 
   // Tipografi Khusus Judul Kop Surat / Cover Atas
   ministryFontFamily?: string;

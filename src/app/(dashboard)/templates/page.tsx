@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { TemplateListActions } from "@/components/templates/template-list-actions";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,7 +9,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getReportType } from "@/report-types/registry";
 import { requireRole } from "@/server/permissions";
 import { listTemplates } from "@/server/services/template-service";
@@ -32,7 +39,7 @@ export default async function TemplatesPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Kelola tata letak dokumen resmi A4, kop surat kementerian/balai,
-            dan riwayat versioning template.
+            dan konfigurasi cetak dokumen.
           </p>
         </div>
       </div>
@@ -41,9 +48,9 @@ export default async function TemplatesPage() {
         <CardHeader>
           <CardTitle>Daftar Template Laporan</CardTitle>
           <CardDescription>
-            Setiap jenis laporan memiliki template konfigurasi dokumen. Perubahan
-            disimpan sebagai versi baru untuk menjamin konsistensi laporan yang
-            sudah terbit sebelumnya.
+            Setiap item template mengatur konfigurasi tata letak laporan. Anda
+            dapat mengedit template secara langsung atau menduplikatnya untuk
+            membuat variasi template baru.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -52,56 +59,56 @@ export default async function TemplatesPage() {
               <TableRow>
                 <TableHead>Nama Template</TableHead>
                 <TableHead>Jenis Laporan</TableHead>
-                <TableHead>Versi Aktif</TableHead>
-                <TableHead>Total Versi</TableHead>
+                <TableHead>Deskripsi</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {templates.map((tpl) => {
-                const def = getReportType(tpl.reportType);
-                return (
-                  <TableRow key={tpl.id}>
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/templates/${tpl.id}`}
-                        className="hover:underline"
-                      >
-                        {tpl.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {def?.shortName ?? tpl.reportType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        v{tpl.latestVersion?.version ?? 1}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{tpl.versions.length} Versi</TableCell>
-                    <TableCell>
-                      {tpl.isActive ? (
-                        <Badge>Aktif</Badge>
-                      ) : (
-                        <Badge variant="outline">Nonaktif</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        nativeButton={false}
-                        render={<Link href={`/templates/${tpl.id}`} />}
-                      >
-                        Konfigurasi &amp; Versi
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {templates.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center py-6 text-muted-foreground"
+                  >
+                    Belum ada template yang tersedia.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                templates.map((tpl) => {
+                  const def = getReportType(tpl.reportType);
+                  return (
+                    <TableRow key={tpl.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          href={`/templates/${tpl.id}`}
+                          className="hover:underline"
+                        >
+                          {tpl.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {def?.shortName ?? tpl.reportType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground max-w-xs truncate">
+                        {tpl.description || "-"}
+                      </TableCell>
+                      <TableCell>
+                        {tpl.isActive ? (
+                          <Badge>Aktif</Badge>
+                        ) : (
+                          <Badge variant="outline">Nonaktif</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <TemplateListActions templateId={tpl.id} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>

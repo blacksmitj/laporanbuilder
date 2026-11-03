@@ -1,8 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateTemplateSchema } from "@/lib/validations/template-schema";
-import { handleApiError, HttpError, requireRole, requireUser } from "@/server/permissions";
-import { getTemplateDetail, updateTemplate } from "@/server/services/template-service";
-
+import {
+  handleApiError,
+  HttpError,
+  requireRole,
+  requireUser,
+} from "@/server/permissions";
+import {
+  deleteTemplate,
+  getTemplateDetail,
+  updateTemplate,
+} from "@/server/services/template-service";
 
 export async function GET(
   _request: NextRequest,
@@ -18,7 +26,21 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  return handleUpdate(request, context);
+}
+
 export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  return handleUpdate(request, context);
+}
+
+async function handleUpdate(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -42,3 +64,16 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const actor = await requireRole(["admin"]);
+    const { id } = await context.params;
+    const data = await deleteTemplate(id, actor);
+    return NextResponse.json({ data });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

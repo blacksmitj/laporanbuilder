@@ -3,30 +3,20 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Check,
+  Bold,
   CheckCircle2,
   Copy,
   FileText,
-  History,
+  Italic,
   Layout,
   Loader2,
   Save,
   Sliders,
-  Trash2,
+  Underline,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,15 +39,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import type { TemplateConfigurationInput } from "@/lib/validations/template-schema";
+import { cn } from "@/lib/utils";
 import { getReportType } from "@/report-types/registry";
-
-interface TemplateVersionItem {
-  id: string;
-  templateId: string;
-  version: number;
-  configuration: unknown;
-  createdAt: string | Date;
-}
 
 interface TemplateDetailProps {
   template: {
@@ -66,8 +49,7 @@ interface TemplateDetailProps {
     reportType: string;
     description: string | null;
     isActive: boolean;
-    versions: TemplateVersionItem[];
-    latestVersion: TemplateVersionItem | null;
+    configuration: unknown;
   };
 }
 
@@ -76,41 +58,33 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
   const reportTypeDefinition = getReportType(template.reportType);
 
   const initialConfig =
-    (template.latestVersion?.configuration as TemplateConfigurationInput) ||
+    (template.configuration as TemplateConfigurationInput) ||
     (reportTypeDefinition?.defaultTemplate as unknown as TemplateConfigurationInput);
 
   const [config, setConfig] = useState<TemplateConfigurationInput>(initialConfig);
-  const [selectedVersionNum, setSelectedVersionNum] = useState<number>(
-    template.latestVersion?.version ?? 1,
-  );
+  const [templateName, setTemplateName] = useState<string>(template.name);
+  const [templateDesc, setTemplateDesc] = useState<string>(template.description || "");
 
-  const [versionToDelete, setVersionToDelete] = useState<number | null>(null);
-
-  // 1. Simpan Pembaruan ke Versi yang Sedang Dibuka
-  const updateVersionMutation = useMutation({
-    mutationFn: async ({
-      version,
-      updatedConfig,
-    }: {
-      version: number;
-      updatedConfig: TemplateConfigurationInput;
-    }) => {
-      const res = await fetch(`/api/templates/${template.id}/versions`, {
+  // 1. Simpan Perubahan ke Template Ini
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/templates/${template.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          version,
-          configuration: updatedConfig,
+          name: templateName,
+          description: templateDesc,
+          configuration: config,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Gagal memperbarui versi template.");
-      return json.data as TemplateVersionItem;
+      if (!res.ok) throw new Error(json.error ?? "Gagal memperbarui template.");
+      return json.data;
     },
-    onSuccess: (ver) => {
+    onSuccess: () => {
       toast.add({
         title: "Perubahan Disimpan",
-        description: `Versi #${ver.version} berhasil diperbarui.`,
+        description: "Konfigurasi template berhasil diperbarui.",
         type: "success",
       });
       router.refresh();
@@ -124,93 +98,33 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
     },
   });
 
-  // 2. Simpan Sebagai Versi Baru
-  const newVersionMutation = useMutation({
-    mutationFn: async (newConfig: TemplateConfigurationInput) => {
-      const res = await fetch(`/api/templates/${template.id}/versions`, {
+  // 2. Duplikat Sebagai Template Baru
+  const duplicateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/templates/${template.id}/duplicate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ configuration: newConfig }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Gagal menyimpan versi baru template.");
-      return json.data as TemplateVersionItem;
+      if (!res.ok) throw new Error(json.error ?? "Gagal menduplikat template.");
+      return json.data as { id: string };
     },
-    onSuccess: (ver) => {
-      setSelectedVersionNum(ver.version);
+    onSuccess: (newTpl) => {
       toast.add({
-        title: "Versi Baru Disimpan",
-        description: `Template berhasil disimpan ke Versi #${ver.version}.`,
+        title: "Template Diduplikasi",
+        description: "Item template baru berhasil dibuat dari salinan ini.",
         type: "success",
       });
+      router.push(`/templates/${newTpl.id}`);
       router.refresh();
     },
     onError: (err: Error) => {
       toast.add({
-        title: "Gagal menyimpan versi baru",
+        title: "Gagal menduplikat template",
         description: err.message,
         type: "error",
       });
     },
   });
-
-  // 3. Hapus Versi Tertentu
-  const deleteVersionMutation = useMutation({
-    mutationFn: async (versionNum: number) => {
-      const res = await fetch(
-        `/api/templates/${template.id}/versions?version=${versionNum}`,
-        { method: "DELETE" },
-      );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Gagal menghapus versi template.");
-      return json;
-    },
-    onSuccess: (_, deletedVer) => {
-      toast.add({
-        title: "Versi Dihapus",
-        description: `Versi #${deletedVer} berhasil dihapus dari sistem.`,
-        type: "success",
-      });
-      setVersionToDelete(null);
-      // Pindahkan pilihan ke versi pertama yang tersisa
-      const remaining = template.versions.filter((v) => v.version !== deletedVer);
-      if (remaining[0]) {
-        handleSwitchVersion(remaining[0].version);
-      }
-      router.refresh();
-    },
-    onError: (err: Error) => {
-      toast.add({
-        title: "Gagal menghapus versi",
-        description: err.message,
-        type: "error",
-      });
-    },
-  });
-
-  function handleUpdateCurrent() {
-    updateVersionMutation.mutate({
-      version: selectedVersionNum,
-      updatedConfig: config,
-    });
-  }
-
-  function handleSaveAsNew() {
-    newVersionMutation.mutate(config);
-  }
-
-  function handleSwitchVersion(verNum: number) {
-    setSelectedVersionNum(verNum);
-    const targetVer = template.versions.find((v) => v.version === verNum);
-    if (targetVer) {
-      setConfig(targetVer.configuration as TemplateConfigurationInput);
-      toast.add({
-        title: `Menampilkan Versi #${verNum}`,
-        description: "Konfigurasi dimuat ke formulir.",
-        type: "info",
-      });
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -230,7 +144,6 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
             <Badge variant="outline">
               {reportTypeDefinition?.shortName ?? template.reportType}
             </Badge>
-            <Badge variant="secondary">Versi Aktif: #{selectedVersionNum}</Badge>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {template.name}
@@ -242,108 +155,40 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Tombol 1: Simpan & Update Versi Ini */}
+          {/* Tombol 1: Duplikat Sebagai Template Baru */}
           <Button
             variant="outline"
-            disabled={
-              updateVersionMutation.isPending || newVersionMutation.isPending
-            }
-            onClick={handleUpdateCurrent}
+            disabled={duplicateMutation.isPending || saveMutation.isPending}
+            onClick={() => duplicateMutation.mutate()}
           >
-            {updateVersionMutation.isPending ? (
-              <Loader2 className="mr-1.5 size-4 animate-spin" />
-            ) : (
-              <Save className="mr-1.5 size-4" />
-            )}
-            Simpan Versi #{selectedVersionNum}
-          </Button>
-
-          {/* Tombol 2: Simpan Sebagai Versi Baru */}
-          <Button
-            disabled={
-              newVersionMutation.isPending || updateVersionMutation.isPending
-            }
-            onClick={handleSaveAsNew}
-          >
-            {newVersionMutation.isPending ? (
+            {duplicateMutation.isPending ? (
               <Loader2 className="mr-1.5 size-4 animate-spin" />
             ) : (
               <Copy className="mr-1.5 size-4" />
             )}
-            Simpan Sebagai Versi Baru
+            Duplikat Template
+          </Button>
+
+          {/* Tombol 2: Simpan Perubahan */}
+          <Button
+            disabled={saveMutation.isPending || duplicateMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-1.5 size-4" />
+            )}
+            Simpan Perubahan
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* Kolom Riwayat Versi */}
-        <div className="space-y-4 lg:col-span-1">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <History className="size-4" />
-                Riwayat Versi
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Pilih versi untuk mengedit atau melihat konfigurasinya.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {template.versions.map((v) => (
-                <div
-                  key={v.id}
-                  className={`group flex items-center justify-between rounded-lg border p-2.5 text-xs transition-colors ${
-                    v.version === selectedVersionNum
-                      ? "border-primary bg-primary/5 font-semibold text-primary"
-                      : "hover:bg-muted/50"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchVersion(v.version)}
-                    className="flex-1 text-left"
-                  >
-                    <div>Versi #{v.version}</div>
-                    <div className="text-[10px] text-muted-foreground font-normal">
-                      {new Date(v.createdAt).toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {v.version === selectedVersionNum && (
-                      <Check className="size-4 text-primary shrink-0 mr-1" />
-                    )}
-                    {/* Tombol Hapus Versi (hanya jika ada lebih dari 1 versi) */}
-                    {template.versions.length > 1 && (
-                      <button
-                        type="button"
-                        title={`Hapus Versi #${v.version}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setVersionToDelete(v.version);
-                        }}
-                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-destructive/10 transition-colors"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
+      <div className="w-full">
         {/* Kolom Tab Konfigurasi */}
-        <div className="lg:col-span-3">
+        <div>
           <Tabs defaultValue="header" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full max-w-md grid-cols-3">
               <TabsTrigger value="header">Kop &amp; Identitas</TabsTrigger>
               <TabsTrigger value="page">Tata Letak A4</TabsTrigger>
               <TabsTrigger value="sections">Bagian &amp; Narasi</TabsTrigger>
@@ -826,8 +671,78 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                       </div>
                     </div>
 
-                    <Field>
-                      <FieldLabel>Judul Utama Dokumen</FieldLabel>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <FieldLabel>Judul Utama Dokumen</FieldLabel>
+                        <div className="flex items-center rounded-md border bg-background p-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            title="Tebal (Bold)"
+                            className={cn(
+                              "flex size-7 items-center justify-center rounded text-xs transition-colors",
+                              (config.header.titleFontWeight === "bold" || !config.header.titleFontWeight)
+                                ? "bg-primary text-primary-foreground font-bold"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                            onClick={() => {
+                              const isBold = config.header.titleFontWeight === "bold" || !config.header.titleFontWeight;
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleFontWeight: isBold ? "normal" : "bold",
+                                },
+                              }));
+                            }}
+                          >
+                            <Bold className="size-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            title="Miring (Italic)"
+                            className={cn(
+                              "flex size-7 items-center justify-center rounded text-xs transition-colors",
+                              config.header.titleItalic
+                                ? "bg-primary text-primary-foreground font-bold"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                            onClick={() => {
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleItalic: !prev.header.titleItalic,
+                                },
+                              }));
+                            }}
+                          >
+                            <Italic className="size-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            title="Garis Bawah (Underline)"
+                            className={cn(
+                              "flex size-7 items-center justify-center rounded text-xs transition-colors",
+                              config.header.titleUnderline
+                                ? "bg-primary text-primary-foreground font-bold"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                            onClick={() => {
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleUnderline: !prev.header.titleUnderline,
+                                },
+                              }));
+                            }}
+                          >
+                            <Underline className="size-4" />
+                          </button>
+                        </div>
+                      </div>
                       <Input
                         value={config.header.reportTitle}
                         onChange={(e) =>
@@ -840,7 +755,7 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                           }))
                         }
                       />
-                    </Field>
+                    </div>
 
                     <div className="rounded-lg border p-4 bg-muted/20 space-y-4">
                       <div className="font-medium text-sm text-foreground">
@@ -958,6 +873,8 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                             fontFamily: config.header.titleFontFamily ?? "Arial, sans-serif",
                             fontSize: `${config.header.titleFontSizePt ?? 11}pt`,
                             fontWeight: config.header.titleFontWeight ?? "bold",
+                            fontStyle: config.header.titleItalic ? "italic" : "normal",
+                            textDecoration: config.header.titleUnderline ? "underline" : "none",
                             letterSpacing: config.header.titleLetterSpacing ?? "0.5px",
                           }}
                         >
@@ -1244,42 +1161,6 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
           </Tabs>
         </div>
       </div>
-
-      {/* Dialog Konfirmasi Hapus Versi */}
-      <AlertDialog
-        open={versionToDelete !== null}
-        onOpenChange={(open) => !open && setVersionToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hapus Versi #{versionToDelete}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Versi ini akan dihapus permanen dari riwayat template. Dokumen yang tidak secara khusus dikunci ke versi ini akan beralih menggunakan versi terbaru lainnya. Tindakan ini tidak dapat dibatalkan.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteVersionMutation.isPending}>
-              Batal
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteVersionMutation.isPending}
-              onClick={() => {
-                if (versionToDelete !== null) {
-                  deleteVersionMutation.mutate(versionToDelete);
-                }
-              }}
-            >
-              {deleteVersionMutation.isPending ? (
-                <Loader2 className="mr-1.5 size-4 animate-spin" />
-              ) : (
-                <Trash2 className="mr-1.5 size-4" />
-              )}
-              Hapus Versi
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

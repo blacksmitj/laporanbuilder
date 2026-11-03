@@ -1,11 +1,10 @@
 import { notFound } from "next/navigation";
 import { ReportPreviewView } from "@/components/pdf/report-preview-view";
+import type { TemplateConfigurationInput } from "@/lib/validations/template-schema";
+import { getReportType } from "@/report-types/registry";
 import { HttpError, requireUser } from "@/server/permissions";
-import { listReportPdfFiles } from "@/server/services/pdf-service";
 import { getReportDetail } from "@/server/services/report-service";
 import { listTemplates } from "@/server/services/template-service";
-import { getReportType } from "@/report-types/registry";
-import type { TemplateConfigurationInput } from "@/lib/validations/template-schema";
 
 export default async function ReportPreviewPage({
   params,
@@ -16,9 +15,8 @@ export default async function ReportPreviewPage({
   const { reportId } = await params;
 
   try {
-    const [report, pdfFiles, templates] = await Promise.all([
+    const [report, templates] = await Promise.all([
       getReportDetail(reportId, actor),
-      listReportPdfFiles(reportId, actor),
       listTemplates(),
     ]);
 
@@ -27,24 +25,12 @@ export default async function ReportPreviewPage({
       (t) => t.reportType === report.reportType,
     );
 
-    const availableVersions = relevantTemplates.flatMap((t) =>
-      t.versions.map((v) => ({
-        id: v.id,
-        version: v.version,
-        templateName: t.name,
-        createdAt: v.createdAt,
-      })),
-    );
-
-    // Dapatkan konfigurasi template aktif saat ini
-    const primaryTemplate = relevantTemplates[0];
-    const matchedVersion = relevantTemplates
-      .flatMap((t) => t.versions)
-      .find((v) => v.id === report.templateVersionId);
+    const matchedTemplate =
+      relevantTemplates.find((t) => t.id === report.templateId) ||
+      relevantTemplates[0];
 
     const activeConfig =
-      (matchedVersion?.configuration as TemplateConfigurationInput) ||
-      (primaryTemplate?.latestVersion?.configuration as TemplateConfigurationInput) ||
+      (matchedTemplate?.configuration as TemplateConfigurationInput) ||
       (definition?.defaultTemplate as unknown as TemplateConfigurationInput);
 
     return (
@@ -53,10 +39,8 @@ export default async function ReportPreviewPage({
         reportName={report.name}
         participantCount={report.participantCount}
         selectedParticipantCount={report.selectedParticipantCount}
-        initialFiles={pdfFiles}
-        currentTemplateVersionId={report.templateVersionId ?? null}
-        availableTemplateVersions={availableVersions}
-        templateId={primaryTemplate?.id ?? null}
+        isGenerated={report.status === "generated"}
+        templateId={matchedTemplate?.id ?? null}
         initialTemplateConfig={activeConfig}
         isAdmin={actor.role === "admin"}
       />

@@ -1,12 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  reportTemplates,
-  reportTemplateVersions,
-} from "@/lib/db/schema";
+import { reportTemplates } from "@/lib/db/schema";
 import type {
   CreateTemplateInput,
-  CreateTemplateVersionInput,
   TemplateConfigurationInput,
   UpdateTemplateInput,
 } from "@/lib/validations/template-schema";
@@ -25,25 +21,15 @@ export async function ensureDefaultTemplatesExist() {
       .limit(1);
 
     if (existing.length === 0) {
-      await db.transaction(async (tx) => {
-        const [tpl] = await tx
-          .insert(reportTemplates)
-          .values({
-            name: `Template Standar ${rType.shortName}`,
-            reportType: rType.key,
-            description: `Template resmi standar instansi untuk ${rType.name}`,
-            isActive: true,
-          })
-          .returning();
-
-        await tx.insert(reportTemplateVersions).values({
-          templateId: tpl.id,
-          version: 1,
-          configuration: rType.defaultTemplate as unknown as Record<
-            string,
-            unknown
-          >,
-        });
+      await db.insert(reportTemplates).values({
+        name: `Template Standar ${rType.shortName}`,
+        reportType: rType.key,
+        description: `Template resmi standar instansi untuk ${rType.name}`,
+        configuration: rType.defaultTemplate as unknown as Record<
+          string,
+          unknown
+        >,
+        isActive: true,
       });
     }
   }
@@ -63,30 +49,7 @@ export async function listTemplates(reportType?: string) {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(reportTemplates.createdAt));
 
-  const templateIds = templates.map((t) => t.id);
-  if (templateIds.length === 0) return [];
-
-  const versions = await db
-    .select()
-    .from(reportTemplateVersions)
-    .orderBy(desc(reportTemplateVersions.version));
-
-  const versionsMap = new Map<string, typeof reportTemplateVersions.$inferSelect[]>();
-  for (const v of versions) {
-    const arr = versionsMap.get(v.templateId) || [];
-    arr.push(v);
-    versionsMap.set(v.templateId, arr);
-  }
-
-  return templates.map((tpl) => {
-    const tplVersions = versionsMap.get(tpl.id) || [];
-    const latestVersion = tplVersions[0] || null;
-    return {
-      ...tpl,
-      versions: tplVersions,
-      latestVersion,
-    };
-  });
+  return templates;
 }
 
 export async function getTemplateDetail(templateId: string) {
@@ -100,17 +63,7 @@ export async function getTemplateDetail(templateId: string) {
     throw new HttpError(404, "Template tidak ditemukan.");
   }
 
-  const versions = await db
-    .select()
-    .from(reportTemplateVersions)
-    .where(eq(reportTemplateVersions.templateId, templateId))
-    .orderBy(desc(reportTemplateVersions.version));
-
-  return {
-    ...tpl,
-    versions,
-    latestVersion: versions[0] || null,
-  };
+  return tpl;
 }
 
 export async function createTemplate(
@@ -122,47 +75,28 @@ export async function createTemplate(
     throw new HttpError(400, "Jenis laporan tidak valid.");
   }
 
-  const created = await db.transaction(async (tx) => {
-    const [tpl] = await tx
-      .insert(reportTemplates)
-      .values({
-        name: input.name,
-        reportType: input.reportType,
-        description: input.description,
-        isActive: true,
-      })
-      .returning();
-
-    const [ver] = await tx
-      .insert(reportTemplateVersions)
-      .values({
-        templateId: tpl.id,
-        version: 1,
-        configuration: input.configuration as unknown as Record<
-          string,
-          unknown
-        >,
-      })
-      .returning();
-
-    return {
-      ...tpl,
-      versions: [ver],
-      latestVersion: ver,
-    };
-  });
+  const [tpl] = await db
+    .insert(reportTemplates)
+    .values({
+      name: input.name,
+      reportType: input.reportType,
+      description: input.description,
+      configuration: input.configuration as unknown as Record<string, unknown>,
+      isActive: true,
+    })
+    .returning();
 
   await recordAuditLog({
     userId: actor.id,
     action: "template.created",
     metadata: {
-      templateId: created.id,
-      name: created.name,
-      reportType: created.reportType,
+      templateId: tpl.id,
+      name: tpl.name,
+      reportType: tpl.reportType,
     },
   });
 
-  return created;
+  return tpl;
 }
 
 export async function updateTemplate(
@@ -188,6 +122,14 @@ export async function updateTemplate(
         ? { description: input.description }
         : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...(input.configuration !== undefined
+        ? {
+            configuration: input.configuration as unknown as Record<
+              string,
+              unknown
+            >,
+          }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(reportTemplates.id, templateId))
@@ -205,11 +147,36 @@ export async function updateTemplate(
   return updated;
 }
 
-export async function createTemplateVersion(
-  templateId: string,
-  input: CreateTemplateVersionInput,
-  actor: Actor,
-) {
+export async function duplicateTemplate(templateId: string, actor: Actor) {
+  const source = await getTemplateDetail(templateId);
+
+  const [duplicated] = await db
+    .insert(reportTemplates)
+    .values({
+      name: `${source.name} (Salinan)`,
+      reportType: source.reportType,
+      description: source.description
+        ? `Salinan dari ${source.description}`
+        : `Salinan dari template ${source.name}`,
+      configuration: source.configuration,
+      isActive: true,
+    })
+    .returning();
+
+  await recordAuditLog({
+    userId: actor.id,
+    action: "template.duplicated",
+    metadata: {
+      sourceTemplateId: source.id,
+      newTemplateId: duplicated.id,
+      name: duplicated.name,
+    },
+  });
+
+  return duplicated;
+}
+
+export async function deleteTemplate(templateId: string, actor: Actor) {
   const [tpl] = await db
     .select()
     .from(reportTemplates)
@@ -220,115 +187,16 @@ export async function createTemplateVersion(
     throw new HttpError(404, "Template tidak ditemukan.");
   }
 
-  const latestVersions = await db
-    .select({ version: reportTemplateVersions.version })
-    .from(reportTemplateVersions)
-    .where(eq(reportTemplateVersions.templateId, templateId))
-    .orderBy(desc(reportTemplateVersions.version))
-    .limit(1);
-
-  const nextVersionNumber = (latestVersions[0]?.version ?? 0) + 1;
-
-  const [newVersion] = await db
-    .insert(reportTemplateVersions)
-    .values({
-      templateId,
-      version: nextVersionNumber,
-      configuration: input.configuration as unknown as Record<
-        string,
-        unknown
-      >,
-    })
-    .returning();
+  await db.delete(reportTemplates).where(eq(reportTemplates.id, templateId));
 
   await recordAuditLog({
     userId: actor.id,
-    action: "template_version.created",
+    action: "template.deleted",
     metadata: {
       templateId,
-      version: nextVersionNumber,
+      name: tpl.name,
     },
   });
 
-  return newVersion;
+  return { success: true };
 }
-
-export async function updateTemplateVersion(
-  templateId: string,
-  versionNumber: number,
-  input: CreateTemplateVersionInput,
-  actor: Actor,
-) {
-  const [existingVersion] = await db
-    .select()
-    .from(reportTemplateVersions)
-    .where(
-      and(
-        eq(reportTemplateVersions.templateId, templateId),
-        eq(reportTemplateVersions.version, versionNumber),
-      ),
-    )
-    .limit(1);
-
-  if (!existingVersion) {
-    throw new HttpError(404, `Versi #${versionNumber} tidak ditemukan.`);
-  }
-
-  const [updatedVersion] = await db
-    .update(reportTemplateVersions)
-    .set({
-      configuration: input.configuration as unknown as Record<string, unknown>,
-    })
-    .where(eq(reportTemplateVersions.id, existingVersion.id))
-    .returning();
-
-  await recordAuditLog({
-    userId: actor.id,
-    action: "template_version.updated",
-    metadata: {
-      templateId,
-      version: versionNumber,
-    },
-  });
-
-  return updatedVersion;
-}
-
-export async function deleteTemplateVersion(
-  templateId: string,
-  versionNumber: number,
-  actor: Actor,
-) {
-  const allVersions = await db
-    .select()
-    .from(reportTemplateVersions)
-    .where(eq(reportTemplateVersions.templateId, templateId));
-
-  if (allVersions.length <= 1) {
-    throw new HttpError(
-      400,
-      "Tidak dapat menghapus versi satu-satunya. Template minimal harus memiliki 1 versi.",
-    );
-  }
-
-  const targetVersion = allVersions.find((v) => v.version === versionNumber);
-  if (!targetVersion) {
-    throw new HttpError(404, `Versi #${versionNumber} tidak ditemukan.`);
-  }
-
-  await db
-    .delete(reportTemplateVersions)
-    .where(eq(reportTemplateVersions.id, targetVersion.id));
-
-  await recordAuditLog({
-    userId: actor.id,
-    action: "template_version.deleted",
-    metadata: {
-      templateId,
-      version: versionNumber,
-    },
-  });
-
-  return { success: true, deletedVersion: versionNumber };
-}
-
