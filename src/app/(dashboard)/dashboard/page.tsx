@@ -61,7 +61,7 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button render={<Link href="/reports/new" />}>
+          <Button nativeButton={false} render={<Link href="/reports/new" />}>
             <FilePlus2 className="mr-1.5 size-4" />
             Buat Laporan Baru
           </Button>
@@ -167,11 +167,11 @@ export default async function DashboardPage() {
             </div>
             <div className="flex items-center gap-2">
               {actor.role === "admin" && (
-                <Button variant="outline" size="sm" render={<Link href="/users" />}>
+                <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/users" />}>
                   Kelola Pengguna
                 </Button>
               )}
-              <Button size="sm" render={<Link href="/reports/new" />}>
+              <Button size="sm" nativeButton={false} render={<Link href="/reports/new" />}>
                 Buat Laporan LPD
               </Button>
             </div>

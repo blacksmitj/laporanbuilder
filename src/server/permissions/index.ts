@@ -1,5 +1,6 @@
 import { and, eq, isNull, type SQL } from "drizzle-orm";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -45,7 +46,7 @@ export async function getOptionalActor(): Promise<Actor | null> {
 export async function requireUser(): Promise<Actor> {
   const actor = await getOptionalActor();
   if (!actor) {
-    throw new HttpError(401, "Sesi tidak ditemukan. Silakan masuk kembali.");
+    redirect("/login");
   }
   return actor;
 }

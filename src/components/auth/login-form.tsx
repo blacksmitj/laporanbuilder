@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FileSpreadsheet, Loader2, LockKeyhole } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
-import { signIn } from "@/lib/auth/client";
+import { authClient, signIn } from "@/lib/auth/client";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Masukkan alamat email yang valid"),
@@ -37,6 +37,12 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
   const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If user lands on login page (e.g. redirected due to expired session),
+    // ensure any stale cookies/client session are cleaned up cleanly.
+    void authClient.signOut();
+  }, []);
 
   const {
     register,

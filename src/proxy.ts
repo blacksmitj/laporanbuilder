@@ -24,7 +24,9 @@ export function proxy(request: NextRequest) {
   }
 
   if (pathname === "/login" && sessionCookie) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    // If the user visits /login, allow them to view login form even if cookie exists,
+    // or let the page component handle checking if session is actually active in DB.
+    return NextResponse.next();
   }
 
   return NextResponse.next();
