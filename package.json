@@ -14,6 +14,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/lib/db/seed.ts",
+    "test:conn": "tsx --env-file=.env src/scripts/test-connections.ts",
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {

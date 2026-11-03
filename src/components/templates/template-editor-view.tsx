@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import type { TemplateConfigurationInput } from "@/lib/validations/template-schema";
@@ -220,17 +221,39 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
             <TabsContent value="header">
               <Card>
                 <CardHeader>
-                  <CardTitle>Identitas Instansi &amp; Kop Surat</CardTitle>
+                  <CardTitle>Identitas Instansi &amp; Kop Surat (Cover Atas)</CardTitle>
                   <CardDescription>
                     Informasi kepala surat resmi yang dicetak pada bagian paling
-                    atas laporan.
+                    atas laporan (dapat diaktifkan/dinonaktifkan).
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Tampilkan Cover / Kop Surat Atas</div>
+                      <div className="text-xs text-muted-foreground">
+                        Aktifkan jika laporan membutuhkan kop resmi kementerian di bagian paling atas dokumen.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={config.header.showKop ?? true}
+                      onCheckedChange={(checked) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          header: {
+                            ...prev.header,
+                            showKop: checked,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+
                   <FieldGroup className="gap-3">
                     <Field>
                       <FieldLabel>Nama Kementerian</FieldLabel>
                       <Input
+                        disabled={config.header.showKop === false}
                         value={config.header.ministryName}
                         onChange={(e) =>
                           setConfig((prev) => ({
@@ -247,6 +270,7 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                     <Field>
                       <FieldLabel>Nama Direktorat Jenderal</FieldLabel>
                       <Input
+                        disabled={config.header.showKop === false}
                         value={config.header.directorateName}
                         onChange={(e) =>
                           setConfig((prev) => ({
@@ -263,6 +287,7 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                     <Field>
                       <FieldLabel>Nama Balai / Instansi Pelaksana</FieldLabel>
                       <Input
+                        disabled={config.header.showKop === false}
                         value={config.header.institutionName}
                         onChange={(e) =>
                           setConfig((prev) => ({
@@ -279,6 +304,7 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                     <Field>
                       <FieldLabel>Alamat Lengkap Instansi</FieldLabel>
                       <Input
+                        disabled={config.header.showKop === false}
                         value={config.header.institutionAddress}
                         onChange={(e) =>
                           setConfig((prev) => ({
@@ -286,6 +312,24 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                             header: {
                               ...prev.header,
                               institutionAddress: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Kontak Instansi (Website, Email, Telepon)</FieldLabel>
+                      <Input
+                        disabled={config.header.showKop === false}
+                        placeholder="https://... | email@... | (022) ..."
+                        value={config.header.institutionContact ?? ""}
+                        onChange={(e) =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            header: {
+                              ...prev.header,
+                              institutionContact: e.target.value,
                             },
                           }))
                         }

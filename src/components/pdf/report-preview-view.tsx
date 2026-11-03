@@ -202,6 +202,7 @@ export function ReportPreviewView({
                       size="xs"
                       variant="secondary"
                       className="mt-1 w-full gap-1.5"
+                      nativeButton={false}
                       render={
                         <a
                           href={`/api/reports/${reportId}/pdf/${file.id}`}

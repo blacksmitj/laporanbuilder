@@ -9,12 +9,12 @@ export const createOfficialSchema = z.object({
   nip: z
     .string()
     .trim()
-    .min(5, "NIP minimal 5 karakter")
+    .min(1, "NIP wajib diisi (gunakan '-' jika tanpa NIP)")
     .max(40, "NIP maksimal 40 karakter"),
   position: z
     .string()
     .trim()
-    .min(2, "Jabatan minimal 2 karakter")
+    .min(1, "Jabatan wajib diisi (gunakan '-' jika tanpa jabatan)")
     .max(120, "Jabatan maksimal 120 karakter"),
   institution: z
     .string()

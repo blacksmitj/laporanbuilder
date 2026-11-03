@@ -49,10 +49,12 @@ export interface AiPromptConfig {
 }
 
 export interface TemplateHeaderConfig {
+  showKop: boolean;
   ministryName: string;
   directorateName: string;
   institutionName: string;
   institutionAddress: string;
+  institutionContact?: string;
   logoStorageKey?: string | null;
   reportTitle: string;
 }

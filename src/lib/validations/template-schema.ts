@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 export const templateHeaderSchema = z.object({
+  showKop: z.boolean().default(true),
   ministryName: z.string().trim().min(2, "Nama Kementerian wajib diisi"),
   directorateName: z.string().trim().min(2, "Nama Direktorat Jenderal wajib diisi"),
   institutionName: z.string().trim().min(2, "Nama Balai/Instansi wajib diisi"),
   institutionAddress: z.string().trim().min(2, "Alamat Instansi wajib diisi"),
+  institutionContact: z.string().trim().optional(),
   logoStorageKey: z.string().nullable().optional(),
   reportTitle: z.string().trim().min(2, "Judul Laporan wajib diisi"),
 });
