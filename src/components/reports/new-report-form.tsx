@@ -153,6 +153,7 @@ export function NewReportForm({ initialOfficials }: NewReportFormProps) {
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href="/reports" />}
             >
               <ArrowLeft className="mr-1 size-3.5" />
@@ -309,6 +310,7 @@ export function NewReportForm({ initialOfficials }: NewReportFormProps) {
           <Button
             type="button"
             variant="outline"
+            nativeButton={false}
             render={<Link href="/reports" />}
           >
             Batal
