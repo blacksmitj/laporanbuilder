@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildLpdBusinessAddress,
   buildLpdBusinessDescription,
+  buildLpdMonitoringRegionIntro,
   buildLpdParticipantRulesNarrative,
 } from "./narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "./row-schema";
@@ -73,6 +74,41 @@ describe("LPD Monev TKM Rules Narrative Engine (Pekalongan 2026 Style)", () => {
     assert.equal(
       desc,
       "Jasa Service dan Jual Beli Komputer dengan produk Perbaikan PC dan Laptop",
+    );
+  });
+
+  it("builds monitoring region intro (point e) accurately from multiple participants", () => {
+    const participants = [
+      {
+        interviewRegency: "Kab. Pekalongan",
+        interviewProvince: "Jawa Tengah",
+      },
+      {
+        interviewRegency: "Kota Pekalongan",
+        interviewProvince: "Jawa Tengah",
+      },
+      {
+        interviewRegency: "Kab. Batang",
+        interviewProvince: "Jawa Tengah",
+      },
+      {
+        interviewRegency: "Kab. Tegal",
+        interviewProvince: "Jawa Tengah",
+      },
+      {
+        interviewRegency: "Kab. Brebes",
+        interviewProvince: "Jawa Tengah",
+      },
+    ];
+
+    const result = buildLpdMonitoringRegionIntro(participants);
+    assert.equal(
+      result.pointE,
+      "Berkenaan dengan pelaksanaan kegiatan TKM Lanjutan, tim melakukan Monitoring di Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah;",
+    );
+    assert.equal(
+      result.tableIntro,
+      "Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :",
     );
   });
 });

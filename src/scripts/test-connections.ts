@@ -166,22 +166,92 @@ async function testMinio() {
   }
 }
 
+async function testAiProvider() {
+  console.log("\n==============================");
+  console.log("  Testing AI Provider (9router)...");
+  console.log("==============================");
+
+  const apiKey = process.env.AI_API_KEY?.trim();
+  const baseUrl = process.env.AI_BASE_URL?.trim() || "https://api.9router.com/v1";
+  const model = process.env.AI_MODEL?.trim() || "gpt-4o-mini";
+
+  if (!apiKey) {
+    logError("AI_API_KEY tidak ditemukan di environment (.env)!");
+    console.error("  💡 Solusi: Tambahkan AI_API_KEY ke file .env Anda.");
+    return false;
+  }
+
+  logInfo(`Endpoint : ${baseUrl}`);
+  logInfo(`Model    : ${model}`);
+  logInfo("Mengirim permintaan uji chat completion...");
+
+  const startTime = Date.now();
+  try {
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
+    const res = await fetch(`${cleanBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: "Anda adalah validator koneksi AI. Jawab singkat." },
+          { role: "user", content: "Tes koneksi siap?" },
+        ],
+        temperature: 0.2,
+        max_tokens: 30,
+      }),
+    });
+
+    const elapsed = Date.now() - startTime;
+
+    if (!res.ok) {
+      const errText = await res.text();
+      let parsedErr = errText;
+      try {
+        const json = JSON.parse(errText);
+        parsedErr = json.error?.message || errText;
+      } catch {}
+      logError(`Koneksi AI GAGAL (HTTP ${res.status})!`);
+      console.error(`  [Detail Error]: ${parsedErr}`);
+      if (parsedErr.includes("Model is unavailable")) {
+        console.error(`  💡 Solusi: Model '${model}' tidak tersedia di provider upstream 9router. Ubah AI_MODEL di .env ke model yang aktif.`);
+      }
+      return false;
+    }
+
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content?.trim();
+
+    logSuccess(`Koneksi AI BERHASIL! (${elapsed}ms)`);
+    console.log(`  - Active Model : ${data.model || model}`);
+    console.log(`  - AI Response  : ${reply || "(kosong)"}`);
+    return true;
+  } catch (error) {
+    logError("Koneksi AI GAGAL!", error);
+    return false;
+  }
+}
+
 async function run() {
-  console.log("Menjalankan verifikasi koneksi PostgreSQL & MinIO/RustFS...");
+  console.log("Menjalankan verifikasi koneksi PostgreSQL, MinIO/RustFS & AI Provider...");
   const pgOk = await testPostgres();
   const minioOk = await testMinio();
+  const aiOk = await testAiProvider();
 
   console.log("\n==============================");
   console.log("  HASIL AKHIR RINGKASAN");
   console.log("==============================");
   console.log(`PostgreSQL       : ${pgOk ? "\x1b[32mTERHUBUNG\x1b[0m" : "\x1b[31mGAGAL\x1b[0m"}`);
   console.log(`MinIO / RustFS   : ${minioOk ? "\x1b[32mTERHUBUNG\x1b[0m" : "\x1b[31mGAGAL\x1b[0m"}`);
+  console.log(`AI Provider      : ${aiOk ? "\x1b[32mTERHUBUNG\x1b[0m" : "\x1b[31mGAGAL\x1b[0m"}`);
   console.log("==============================\n");
 
-  if (!pgOk || !minioOk) {
+  if (!pgOk || !minioOk || !aiOk) {
     process.exit(1);
   }
 }
 
 run();
-

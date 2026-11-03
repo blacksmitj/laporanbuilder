@@ -32,6 +32,7 @@ export interface ReportDocumentSnapshot {
       paragraphs?: string[];
     };
     section_b_summary?: {
+      monitoringRegionIntro?: string;
       introText?: string;
       showParticipantTable?: boolean;
     };
@@ -74,6 +75,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   const sections = snapshot.sections;
 
   const sectionAParagraphs = sections.section_a_general?.paragraphs || [];
+  const sectionBRegionIntro =
+    sections.section_b_summary?.monitoringRegionIntro?.trim();
   const sectionBIntro =
     sections.section_b_summary?.introText ||
     "Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :";
@@ -82,7 +85,39 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     sections.section_closing?.closingParagraph ||
     "Demikian laporan Perjalanan Dinas ini disampaikan, untuk dapat diketahui dan sekaligus sebagai bahan pertanggung jawaban dalam melaksanakan tugas.";
 
+  const contactIcons = {
+    web: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z",
+    mail: "M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z",
+    phone: "M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
+  };
+  const contactItemsHtml = (header.institutionContact ?? "")
+    .split("|")
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => {
+      const icon = /^(https?:\/\/|www\.)/i.test(c)
+        ? contactIcons.web
+        : c.includes("@")
+          ? contactIcons.mail
+          : contactIcons.phone;
+      return `<span class="header-contact-item"><svg class="header-icon" viewBox="0 0 24 24" fill="currentColor"><path d="${icon}"/></svg>${c}</span>`;
+    })
+    .join("");
+
   const signOfficials = snapshot.officials.filter((o) => o.signingEnabled);
+
+  const pageMarginTop = page.marginsMm.top;
+  const pageMarginLeft = page.marginsMm.left;
+  const pageMarginRight = page.marginsMm.right;
+
+  // Margin Kop Surat (memungkinkan kop lebih wide dan rapat ke atas dibanding isi body)
+  const kopMarginTop = header.kopMarginsMm?.top ?? 15;
+  const kopMarginLeft = header.kopMarginsMm?.left ?? 15;
+  const kopMarginRight = header.kopMarginsMm?.right ?? 15;
+
+  const kopOffsetTop = Math.max(0, pageMarginTop - kopMarginTop);
+  const kopOffsetLeft = Math.max(0, pageMarginLeft - kopMarginLeft);
+  const kopOffsetRight = Math.max(0, pageMarginRight - kopMarginRight);
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -92,25 +127,157 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   <style>
     @page {
       size: ${page.paperSize} ${page.orientation};
-      margin: 20mm 20mm 20mm 20mm;
+      margin-top: ${kopMarginTop}mm;
+      margin-bottom: ${page.marginsMm.bottom}mm;
+      margin-left: ${kopMarginLeft}mm;
+      margin-right: ${kopMarginRight}mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
     }
+    html {
+      background-color: #f1f3f5;
+    }
     body {
-      font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-      font-size: 11pt;
-      line-height: 1.5;
+      font-family: ${page.fontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
+      font-size: ${page.fontSizePt || 11}pt;
+      line-height: ${page.lineHeight || 1.5};
       color: #000;
       margin: 0;
       padding: 0;
-      background: #fff;
+      background: #f1f3f5;
+    }
+
+    /* Tampilan di Layar (Live Preview) dibuat persis menyerupai Kertas A4 Nyata */
+    @media screen {
+      body {
+        padding: 40px 16px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #525659; /* Nuansa PDF viewer profesional */
+      }
+      /* Sumber asli disembunyikan; script memecahnya menjadi lembar A4 terpisah */
+      .page-container {
+        position: absolute;
+        visibility: hidden;
+        left: -9999px;
+      }
+      #pages {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+      }
+      .sheet {
+        width: 210mm;
+        height: 297mm;
+        flex-shrink: 0;
+        padding-top: ${kopMarginTop}mm;
+        padding-bottom: ${page.marginsMm.bottom}mm;
+        padding-left: ${kopMarginLeft}mm;
+        padding-right: ${kopMarginRight}mm;
+        background: #ffffff;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+      .sheet-content {
+        height: 100%;
+        overflow: hidden;
+      }
+      .sheet-content .body-wrap {
+        padding-left: ${kopOffsetLeft}mm;
+        padding-right: ${kopOffsetRight}mm;
+      }
+      .sheet-content .body-wrap.first {
+        margin-top: ${kopOffsetTop}mm;
+      }
+      .sheet-content .document-body-content {
+        margin-top: 0;
+        padding-left: 0;
+        padding-right: 0;
+      }
+      .sheet::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: ${kopMarginTop}mm;
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(59, 130, 246, 0.04),
+          rgba(59, 130, 246, 0.04) 4px,
+          transparent 4px,
+          transparent 8px
+        );
+        border-bottom: 1px dashed rgba(59, 130, 246, 0.35);
+        pointer-events: none;
+      }
+      .sheet::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: ${page.marginsMm.bottom}mm;
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(59, 130, 246, 0.04),
+          rgba(59, 130, 246, 0.04) 4px,
+          transparent 4px,
+          transparent 8px
+        );
+        border-top: 1px dashed rgba(59, 130, 246, 0.35);
+        pointer-events: none;
+      }
+      .sheet-footer-info {
+        position: absolute;
+        bottom: 6mm;
+        right: 15mm;
+        font-size: 8pt;
+        color: #64748b;
+        font-family: Arial, sans-serif;
+        pointer-events: none;
+        z-index: 5;
+      }
+    }
+
+    /* Tampilan Cetak / Render Playwright PDF (Kertas Asli) */
+    @media print {
+      html, body {
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+      }
+      .page-container {
+        width: 100% !important;
+        min-height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: transparent !important;
+      }
+      #pages {
+        display: none !important;
+      }
     }
     .header-box {
       display: flex;
       align-items: center;
-      margin-bottom: 16px;
+      margin-bottom: ${kopOffsetTop > 0 ? 12 : 16}px;
       padding-bottom: 6px;
+      width: 100%;
+    }
+    /* Pembungkus isi dokumen selain kop surat agar mengikuti margin dokumen body */
+    .document-body-content {
+      margin-top: ${kopOffsetTop}mm;
+      padding-left: ${kopOffsetLeft}mm;
+      padding-right: ${kopOffsetRight}mm;
     }
     .header-logo-container {
       width: 105px;
@@ -139,25 +306,25 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       text-align: left;
     }
     .header-ministry {
-      font-family: Arial, sans-serif;
-      font-size: 10.5pt;
-      font-weight: normal;
+      font-family: ${header.ministryFontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
+      font-size: ${header.ministryFontSizePt ?? 10.5}pt;
+      font-weight: ${header.ministryFontWeight || "normal"};
       color: #111;
       line-height: 1.15;
       margin-bottom: 2px;
     }
     .header-dirjen {
-      font-family: Arial, sans-serif;
-      font-size: 10pt;
-      font-weight: bold;
+      font-family: ${header.directorateFontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
+      font-size: ${header.directorateFontSizePt ?? 10}pt;
+      font-weight: ${header.directorateFontWeight || "bold"};
       color: #050505;
       line-height: 1.18;
       margin-bottom: 2px;
     }
     .header-institution {
-      font-family: Arial, sans-serif;
-      font-size: 12.5pt;
-      font-weight: bold;
+      font-family: ${header.institutionFontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
+      font-size: ${header.institutionFontSizePt ?? 12.5}pt;
+      font-weight: ${header.institutionFontWeight || "bold"};
       color: #1f4362;
       line-height: 1.2;
       letter-spacing: 0.3px;
@@ -195,10 +362,11 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       margin: 0 0 16px 0;
     }
     .report-title {
-      font-size: 11pt;
-      font-weight: bold;
+      font-family: ${header.titleFontFamily || 'Arial, "Helvetica Neue", Helvetica, sans-serif'};
+      font-size: ${header.titleFontSizePt ?? 11}pt;
+      font-weight: ${header.titleFontWeight || "bold"};
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: ${header.titleLetterSpacing || "0.5px"};
     }
     .meta-table {
       width: 100%;
@@ -236,6 +404,23 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       margin-bottom: 8px;
       line-height: 1.5;
       font-size: 11pt;
+    }
+    .ordered-clause {
+      display: flex;
+      align-items: baseline;
+      text-align: justify;
+      margin-top: 0;
+      margin-bottom: 8px;
+      line-height: 1.5;
+      font-size: 11pt;
+    }
+    .ordered-clause-num {
+      width: 24px;
+      flex-shrink: 0;
+    }
+    .ordered-clause-text {
+      flex: 1;
+      text-align: justify;
     }
     .data-table {
       width: 100%;
@@ -300,6 +485,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   </style>
 </head>
 <body>
+  <div class="page-container">
 
   ${
     header.showKop !== false
@@ -315,30 +501,13 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       <div class="header-dirjen">${header.directorateName}</div>
       <div class="header-institution">${header.institutionName}</div>
       <div class="header-address">${header.institutionAddress}</div>
-      <div class="header-contacts">
-        <span class="header-contact-item">
-          <svg class="header-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-          </svg>
-          https://bbpkk.kemnaker.go.id/
-        </span>
-        <span class="header-contact-item">
-          <svg class="header-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-          </svg>
-          bbpkk@kemnaker.go.id
-        </span>
-        <span class="header-contact-item">
-          <svg class="header-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-          </svg>
-          (022) 2786053
-        </span>
-      </div>
+      <div class="header-contacts">${contactItemsHtml}</div>
     </div>
   </div>`
       : ""
   }
+
+  <div class="document-body-content">
 
   <!-- JUDUL LAPORAN -->
   <div class="report-title-box">
@@ -388,9 +557,36 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
 
   <!-- HASIL PENUGASAN -->
   <div class="section-heading">Hasil Penugasan</div>
-  ${sectionAParagraphs.map((par) => `<p>${par}</p>`).join("")}
+  ${
+    sectionAParagraphs
+      .map((par, idx) => {
+        const letter = String.fromCharCode(97 + idx); // a, b, c, d, ...
+        // If the paragraph already begins with a), b), etc., display as is
+        const cleanPar = par.trim();
+        const matchLetter = cleanPar.match(/^[a-z]\)\s*(.*)/i);
+        const prefix = matchLetter ? cleanPar.slice(0, 2) : `${letter})`;
+        const content = matchLetter ? matchLetter[1] : cleanPar;
 
-  <p style="text-indent: 0; margin-bottom: 6px;">${sectionBIntro}</p>
+        return `
+    <div class="ordered-clause">
+      <div class="ordered-clause-num">${prefix}</div>
+      <div class="ordered-clause-text">${content}</div>
+    </div>`;
+      })
+      .join("")
+  }
+
+  ${
+    sectionBRegionIntro
+      ? `
+    <div class="ordered-clause">
+      <div class="ordered-clause-num">${String.fromCharCode(97 + sectionAParagraphs.length)})</div>
+      <div class="ordered-clause-text">${sectionBRegionIntro}</div>
+    </div>`
+      : ""
+  }
+
+  <p style="text-indent: 0; margin-top: 6px; margin-bottom: 6px;">${sectionBIntro}</p>
 
   <!-- TABEL RINCIAN HASIL MONITORING (PERSIS PEKALONGAN 2026) -->
   <table class="data-table">
@@ -461,6 +657,113 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     </table>
   </div>
 
+  </div> <!-- /.document-body-content -->
+  </div> <!-- /.page-container -->
+  <script>
+  (function () {
+    if (!window.matchMedia("screen").matches) return;
+    var src = document.querySelector(".page-container");
+    var body = src.querySelector(".document-body-content");
+    var pages = document.createElement("div");
+    pages.id = "pages";
+    document.body.appendChild(pages);
+
+    var units = [];
+    var header = src.querySelector(".header-box");
+    if (header) units.push({ node: header, kop: true });
+    Array.prototype.slice.call(body.children).forEach(function (el) {
+      if (el.classList.contains("data-table")) {
+        el.querySelectorAll("tbody tr").forEach(function (tr) {
+          units.push({ table: el, node: tr });
+        });
+      } else {
+        units.push({ node: el });
+      }
+    });
+
+    var content, wrap, curTable, curTableSrc, pageIndex = -1;
+    var allSheets = [];
+    function newPage() {
+      pageIndex++;
+      var sheet = document.createElement("div");
+      sheet.className = "sheet";
+      content = document.createElement("div");
+      content.className = "sheet-content";
+      sheet.appendChild(content);
+      pages.appendChild(sheet);
+      allSheets.push(sheet);
+      wrap = null;
+      curTable = null;
+      curTableSrc = null;
+    }
+    function ensureWrap() {
+      if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.className = "body-wrap document-body-content" + (pageIndex === 0 ? " first" : "");
+        content.appendChild(wrap);
+      }
+      return wrap;
+    }
+    function overflows() {
+      return content.scrollHeight > content.clientHeight + 1;
+    }
+    function place(u) {
+      if (u.kop) {
+        content.appendChild(u.node);
+        return;
+      }
+      var w = ensureWrap();
+      if (u.table) {
+        if (curTableSrc !== u.table) {
+          curTable = u.table.cloneNode(false);
+          var thead = u.table.querySelector("thead");
+          if (thead) curTable.appendChild(thead.cloneNode(true));
+          curTable.appendChild(document.createElement("tbody"));
+          curTableSrc = u.table;
+          w.appendChild(curTable);
+        }
+        curTable.querySelector("tbody").appendChild(u.node);
+      } else {
+        curTable = null;
+        curTableSrc = null;
+        w.appendChild(u.node);
+      }
+    }
+    function unplace(u) {
+      if (u.node.parentNode) u.node.parentNode.removeChild(u.node);
+    }
+
+    newPage();
+    units.forEach(function (u) {
+      place(u);
+      if (overflows() && content.children.length > 0) {
+        var onlyUnit = content.querySelectorAll("*").length <= 1;
+        unplace(u);
+        if (curTable && curTable.querySelector("tbody").children.length === 0 && curTable.parentNode) {
+          curTable.parentNode.removeChild(curTable);
+        }
+        if (wrap && wrap.children.length === 0 && wrap.parentNode) {
+          wrap.parentNode.removeChild(wrap);
+        }
+        if (!onlyUnit) {
+          newPage();
+          place(u);
+        } else {
+          place(u);
+        }
+      }
+    });
+
+    // Berikan label nomor halaman di kanan bawah setiap lembar preview
+    var totalPages = allSheets.length;
+    allSheets.forEach(function (sh, idx) {
+      var footer = document.createElement("div");
+      footer.className = "sheet-footer-info";
+      footer.textContent = "Halaman " + (idx + 1) + " dari " + totalPages;
+      sh.appendChild(footer);
+    });
+  })();
+  </script>
 </body>
 </html>`;
 }

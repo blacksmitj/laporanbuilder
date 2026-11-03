@@ -36,8 +36,12 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { buildLpdMonitoringRegionIntro } from "@/report-types/lpd-monev-tkm/narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "@/report-types/lpd-monev-tkm/row-schema";
 import { useReportEditorStore } from "@/stores/report-editor-store";
+import { ParagraphAiDialog } from "./paragraph-ai-dialog";
+import { PolishIntroDialog } from "./polish-intro-dialog";
+import { ParticipantAiDialog } from "./participant-ai-dialog";
 
 interface SelectedParticipantItem {
   participantId: string;
@@ -98,6 +102,40 @@ export function ReportEditorView({
   >("section_a");
 
   const [aiGeneratingPid, setAiGeneratingPid] = useState<string | null>(null);
+  const [isPolishingIntroAi, setIsPolishingIntroAi] = useState(false);
+
+  // Modal dialog state untuk generate AI per-inputan paragraf
+  const [paragraphAiModal, setParagraphAiModal] = useState<{
+    open: boolean;
+    sectionKey: "section_a" | "section_c";
+    sectionTitle: string;
+    paragraphIndex: number;
+    currentDraft: string;
+  }>({
+    open: false,
+    sectionKey: "section_a",
+    sectionTitle: "Bagian A — Umum",
+    paragraphIndex: 0,
+    currentDraft: "",
+  });
+
+  // Modal dialog state untuk polish intro (poin e)
+  const [polishIntroModalOpen, setPolishIntroModalOpen] = useState(false);
+
+  // Modal dialog state untuk polish narasi per peserta
+  const [participantAiModal, setParticipantAiModal] = useState<{
+    open: boolean;
+    participantId: string;
+    participantName: string;
+    businessSector?: string;
+    businessType?: string;
+    currentDraft: string;
+  }>({
+    open: false,
+    participantId: "",
+    participantName: "",
+    currentDraft: "",
+  });
 
   // Initialize store on mount
   useEffect(() => {
@@ -252,9 +290,75 @@ export function ReportEditorView({
     });
   }
 
-  // Section B Intro
+  // Section B Intro & Monitoring Region Intro (Point e)
   const sectionBContent = sectionContents["section_b_summary"] || {};
-  const sectionBIntro = String(sectionBContent.introText || "");
+  const sectionBRegionIntro = String(
+    sectionBContent.monitoringRegionIntro || "",
+  );
+  const sectionBIntro = String(
+    sectionBContent.introText ||
+      "Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :",
+  );
+
+  function syncRegionFromParticipants() {
+    const { pointE, tableIntro } = buildLpdMonitoringRegionIntro(
+      participants.map((p) => ({
+        normalizedData: p.normalizedData,
+      })),
+    );
+    setSectionContent("section_b_summary", {
+      ...sectionBContent,
+      monitoringRegionIntro: pointE,
+      introText: sectionBIntro || tableIntro,
+    });
+    toast.add({
+      title: "Wilayah Berhasil Disinkronkan",
+      description: "Poin e diperbarui berdasarkan kabupaten/kota data peserta.",
+      type: "success",
+    });
+  }
+
+  async function handleAiPolishIntro() {
+    const targetText = sectionBRegionIntro.trim();
+    if (!targetText) {
+      toast.add({
+        title: "Teks Kosong",
+        description: "Silakan isi atau sinkronkan teks poin e terlebih dahulu.",
+        type: "error",
+      });
+      return;
+    }
+
+    try {
+      setIsPolishingIntroAi(true);
+      const res = await fetch(`/api/reports/${reportId}/narratives/polish-intro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentIntro: targetText }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Gagal memoles narasi dengan AI.");
+
+      setSectionContent("section_b_summary", {
+        ...sectionBContent,
+        monitoringRegionIntro: json.data.text,
+      });
+
+      toast.add({
+        title: "Narasi Poin e Berhasil Dipoles AI",
+        description: `Bahasa disempurnakan (${json.data.durationMs || 0}ms).`,
+        type: "success",
+      });
+    } catch (err: unknown) {
+      toast.add({
+        title: "AI Polish Gagal",
+        description: err instanceof Error ? err.message : "Terjadi kesalahan.",
+        type: "error",
+      });
+    } finally {
+      setIsPolishingIntroAi(false);
+    }
+  }
 
   // Section C Paragraphs
   const sectionCContent = sectionContents["section_c_conclusion"] || {};
@@ -503,14 +607,34 @@ export function ReportEditorView({
                   <div key={idx} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
                       <span>Paragraf #{idx + 1}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => removeSectionAParagraph(idx)}
-                        disabled={sectionAParagraphs.length <= 1}
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          className="h-6 text-[11px] px-2"
+                          onClick={() =>
+                            setParagraphAiModal({
+                              open: true,
+                              sectionKey: "section_a",
+                              sectionTitle: "Bagian A — Umum",
+                              paragraphIndex: idx,
+                              currentDraft: par,
+                            })
+                          }
+                        >
+                          <Sparkles className="mr-1 size-3 text-primary" />
+                          Poles dengan AI
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => removeSectionAParagraph(idx)}
+                          disabled={sectionAParagraphs.length <= 1}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                     <Textarea
                       rows={3}
@@ -530,18 +654,75 @@ export function ReportEditorView({
           {activeTab === "section_b" && (
             <Card>
               <CardHeader>
-                <CardTitle>Bagian B — Ringkasan Kegiatan</CardTitle>
+                <CardTitle>Bagian B — Ringkasan Kegiatan &amp; Lokasi Monitoring</CardTitle>
                 <CardDescription>
-                  Teks pengantar sebelum tabel rincian hasil kunjungan lapangan
-                  peserta TKM Lanjutan.
+                  Narasi pengantar hasil penugasan poin e) serta kalimat pengantar sebelum tabel peserta.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <Field>
-                  <FieldLabel>Kalimat Pengantar Ringkasan Kegiatan</FieldLabel>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-sm font-semibold">
+                      Poin e) Wilayah Pelaksanaan Monitoring
+                    </FieldLabel>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={syncRegionFromParticipants}
+                        title="Ekstrak otomatis daftar kabupaten/kota dan provinsi dari data peserta"
+                      >
+                        <RefreshCw className="mr-1 size-3" />
+                        Sinkronkan dari Excel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="secondary"
+                        onClick={() => {
+                          const targetText = sectionBRegionIntro.trim();
+                          if (!targetText) {
+                            toast.add({
+                              title: "Teks Kosong",
+                              description: "Silakan isi atau sinkronkan teks poin e terlebih dahulu.",
+                              type: "error",
+                            });
+                            return;
+                          }
+                          setPolishIntroModalOpen(true);
+                        }}
+                        title="Perhalus dan sempurnakan kalimat poin e dengan AI (Preview Before-After)"
+                      >
+                        <Sparkles className="mr-1 size-3 text-primary" />
+                        Poles dengan AI
+                      </Button>
+                    </div>
+                  </div>
                   <Textarea
-                    rows={4}
+                    rows={3}
+                    value={sectionBRegionIntro}
+                    placeholder="Berkenaan dengan pelaksanaan kegiatan TKM Lanjutan, tim melakukan Monitoring di Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah;"
+                    onChange={(e) =>
+                      setSectionContent("section_b_summary", {
+                        ...sectionBContent,
+                        monitoringRegionIntro: e.target.value,
+                      })
+                    }
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Poin ini dicetak sebagai penutup narasi Hasil Penugasan (poin e) sebelum tabel rincian peserta.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <FieldLabel className="text-sm font-semibold">
+                    Kalimat Pengantar Sebelum Tabel Rincian
+                  </FieldLabel>
+                  <Textarea
+                    rows={2}
                     value={sectionBIntro}
+                    placeholder="Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :"
                     onChange={(e) =>
                       setSectionContent("section_b_summary", {
                         ...sectionBContent,
@@ -549,7 +730,7 @@ export function ReportEditorView({
                       })
                     }
                   />
-                </Field>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -607,15 +788,19 @@ export function ReportEditorView({
                               type="button"
                               size="xs"
                               variant="outline"
-                              disabled={isAiLoading}
-                              onClick={() => handleAiEnhance(p.participantId)}
+                              onClick={() =>
+                                setParticipantAiModal({
+                                  open: true,
+                                  participantId: p.participantId,
+                                  participantName: String(norm.respondentName ?? "-"),
+                                  businessSector: norm.sector ?? undefined,
+                                  businessType: norm.businessType ?? undefined,
+                                  currentDraft: currentNarrative,
+                                })
+                              }
                             >
-                              {isAiLoading ? (
-                                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                              ) : (
-                                <Sparkles className="mr-1.5 size-3.5 text-primary" />
-                              )}
-                              Perhalus dengan AI
+                              <Sparkles className="mr-1.5 size-3.5 text-primary" />
+                              Poles dengan AI
                             </Button>
                           </div>
                         </div>
@@ -667,14 +852,34 @@ export function ReportEditorView({
                   <div key={idx} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
                       <span>Poin Kesimpulan #{idx + 1}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => removeSectionCParagraph(idx)}
-                        disabled={sectionCParagraphs.length <= 1}
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="xs"
+                          className="h-6 text-[11px] px-2"
+                          onClick={() =>
+                            setParagraphAiModal({
+                              open: true,
+                              sectionKey: "section_c",
+                              sectionTitle: "Bagian C — Kesimpulan",
+                              paragraphIndex: idx,
+                              currentDraft: par,
+                            })
+                          }
+                        >
+                          <Sparkles className="mr-1 size-3 text-primary" />
+                          Poles dengan AI
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => removeSectionCParagraph(idx)}
+                          disabled={sectionCParagraphs.length <= 1}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                     <Textarea
                       rows={3}
@@ -719,6 +924,72 @@ export function ReportEditorView({
           )}
         </div>
       </div>
+
+      {/* Modal Dialog AI Per Paragraf */}
+      <ParagraphAiDialog
+        open={paragraphAiModal.open}
+        onOpenChange={(open) =>
+          setParagraphAiModal((prev) => ({ ...prev, open }))
+        }
+        reportId={reportId}
+        sectionKey={paragraphAiModal.sectionKey}
+        sectionTitle={paragraphAiModal.sectionTitle}
+        paragraphIndex={paragraphAiModal.paragraphIndex}
+        currentDraft={paragraphAiModal.currentDraft}
+        onApply={(text) => {
+          if (paragraphAiModal.sectionKey === "section_a") {
+            updateSectionAParagraph(paragraphAiModal.paragraphIndex, text);
+          } else {
+            updateSectionCParagraph(paragraphAiModal.paragraphIndex, text);
+          }
+          toast.add({
+            title: "Teks Diterapkan",
+            description: `Paragraf #${paragraphAiModal.paragraphIndex + 1} berhasil diperbarui.`,
+            type: "success",
+          });
+        }}
+      />
+
+      {/* Modal Dialog Polish Intro Poin e */}
+      <PolishIntroDialog
+        open={polishIntroModalOpen}
+        onOpenChange={setPolishIntroModalOpen}
+        reportId={reportId}
+        currentDraft={sectionBRegionIntro}
+        onApply={(text) => {
+          setSectionContent("section_b_summary", {
+            ...sectionBContent,
+            monitoringRegionIntro: text,
+          });
+          toast.add({
+            title: "Narasi Poin e Diperbarui",
+            description: "Hasil poles narasi berhasil disimpan ke draf laporan.",
+            type: "success",
+          });
+        }}
+      />
+
+      {/* Modal Dialog Polish Narasi Peserta */}
+      <ParticipantAiDialog
+        open={participantAiModal.open}
+        onOpenChange={(open) =>
+          setParticipantAiModal((prev) => ({ ...prev, open }))
+        }
+        reportId={reportId}
+        participantId={participantAiModal.participantId}
+        participantName={participantAiModal.participantName}
+        businessSector={participantAiModal.businessSector}
+        businessType={participantAiModal.businessType}
+        currentDraft={participantAiModal.currentDraft}
+        onApply={(text) => {
+          setParticipantNarrative(participantAiModal.participantId, text);
+          toast.add({
+            title: "Narasi Peserta Diperbarui",
+            description: `Narasi untuk ${participantAiModal.participantName} berhasil diperbarui.`,
+            type: "success",
+          });
+        }}
+      />
     </div>
   );
 }

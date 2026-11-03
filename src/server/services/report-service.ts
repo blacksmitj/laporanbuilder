@@ -357,6 +357,9 @@ export async function updateReport(
           ? { fiscalYear: input.fiscalYear }
           : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.templateVersionId !== undefined
+          ? { templateVersionId: input.templateVersionId }
+          : {}),
         ...(input.metadata !== undefined
           ? { metadata: validatedMetadata }
           : {}),

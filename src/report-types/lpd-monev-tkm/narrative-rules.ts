@@ -122,3 +122,66 @@ export function buildLpdParticipantRulesNarrative(
 
   return narrativeText.trim();
 }
+
+/**
+ * Extract unique regencies and provinces from participants to form standard Intro Point (e).
+ * e.g. "Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah"
+ */
+export function buildLpdMonitoringRegionIntro(
+  participants: Array<{
+    interviewRegency?: string | null;
+    interviewProvince?: string | null;
+    normalizedData?: Record<string, unknown> | null;
+  }>,
+  fallbackRegion?: string | null,
+): {
+  pointE: string;
+  tableIntro: string;
+} {
+  const regenciesSet = new Set<string>();
+  const provincesSet = new Set<string>();
+
+  for (const p of participants) {
+    const regency =
+      p.interviewRegency ||
+      (typeof p.normalizedData?.interviewRegency === "string"
+        ? (p.normalizedData.interviewRegency as string)
+        : null);
+
+    const province =
+      p.interviewProvince ||
+      (typeof p.normalizedData?.interviewProvince === "string"
+        ? (p.normalizedData.interviewProvince as string)
+        : null);
+
+    if (regency?.trim()) regenciesSet.add(regency.trim());
+    if (province?.trim()) provincesSet.add(province.trim());
+  }
+
+  const regencyList = Array.from(regenciesSet);
+  const provinceList = Array.from(provincesSet);
+
+  let locationText = "";
+  if (regencyList.length > 0) {
+    if (regencyList.length === 1) {
+      locationText = regencyList[0];
+    } else {
+      const last = regencyList[regencyList.length - 1];
+      const initial = regencyList.slice(0, -1).join(", ");
+      locationText = `${initial} dan ${last}`;
+    }
+
+    if (provinceList.length > 0) {
+      locationText += ` - Provinsi ${provinceList.join(", ")}`;
+    }
+  } else if (fallbackRegion?.trim()) {
+    locationText = fallbackRegion.trim();
+  } else {
+    locationText = "wilayah tugas";
+  }
+
+  const pointE = `Berkenaan dengan pelaksanaan kegiatan TKM Lanjutan, tim melakukan Monitoring di ${locationText};`;
+  const tableIntro = "Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :";
+
+  return { pointE, tableIntro };
+}

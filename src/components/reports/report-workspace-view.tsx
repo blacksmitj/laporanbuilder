@@ -50,6 +50,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import type { ReportStatus } from "@/lib/db/schema";
 import type { ReportOfficialAssignment } from "@/lib/validations/report-schema";
@@ -59,6 +60,7 @@ export interface ReportDetailSerialized {
   id: string;
   name: string;
   reportType: string;
+  templateVersionId?: string | null;
   definitionVersion: number;
   fiscalYear: number;
   status: ReportStatus;
@@ -102,20 +104,32 @@ export interface ReportDetailSerialized {
   }>;
 }
 
+export interface TemplateVersionOption {
+  id: string;
+  version: number;
+  templateName: string;
+  createdAt: string | Date;
+}
+
 interface ReportWorkspaceViewProps {
   report: ReportDetailSerialized;
   availableOfficials: OfficialItem[];
+  availableTemplateVersions?: TemplateVersionOption[];
 }
 
 export function ReportWorkspaceView({
   report,
   availableOfficials,
+  availableTemplateVersions = [],
 }: ReportWorkspaceViewProps) {
   const router = useRouter();
   const definition = requireReportType(report.reportType);
 
   const [reportName, setReportName] = useState(report.name);
   const [fiscalYear, setFiscalYear] = useState(report.fiscalYear);
+  const [templateVersionId, setTemplateVersionId] = useState<string | null>(
+    report.templateVersionId ?? null,
+  );
   const [metadata, setMetadata] = useState<Record<string, unknown>>(
     () => ({
       ...(definition.defaultMetadata as Record<string, unknown>),
@@ -176,6 +190,7 @@ export function ReportWorkspaceView({
         body: JSON.stringify({
           name: reportName.trim(),
           fiscalYear,
+          templateVersionId,
           metadata: parsedMeta.data,
           officials,
           expectedVersion: currentVersion,
@@ -423,6 +438,47 @@ export function ReportWorkspaceView({
               />
             </Field>
           </FieldGroup>
+
+          {/* Pemilih Versi Template / Kop Surat */}
+          <div className="rounded-lg border p-4 bg-muted/20 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <FieldLabel htmlFor="workspace-template-version" className="font-semibold text-sm">
+                  Versi Template &amp; Kop Surat Dokumen
+                </FieldLabel>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Tentukan versi kop surat &amp; tata letak yang digunakan saat membuat PDF dan pratinjau.
+                </p>
+              </div>
+              <Link
+                href="/templates"
+                className="text-xs text-primary hover:underline font-medium inline-flex items-center shrink-0"
+              >
+                Kelola Desain di Template Editor &rarr;
+              </Link>
+            </div>
+
+            <NativeSelect
+              id="workspace-template-version"
+              value={templateVersionId ?? ""}
+              onChange={(e) => setTemplateVersionId(e.target.value ? e.target.value : null)}
+            >
+              <NativeSelectOption value="">
+                Versi Otomatis / Terbaru (Direkomendasikan)
+              </NativeSelectOption>
+              {availableTemplateVersions.map((v) => (
+                <NativeSelectOption key={v.id} value={v.id}>
+                  {v.templateName} &bull; Versi #{v.version} (
+                  {new Date(v.createdAt).toLocaleDateString("id-ID", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                  )
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
 
           <DynamicMetadataFields
             fields={definition.metadataFields}

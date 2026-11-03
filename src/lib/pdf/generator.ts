@@ -42,21 +42,26 @@ export async function generatePdfBufferFromSnapshot(
   const page = await browser.newPage();
 
   try {
+    // Emulate print media for exact CSS print styles
+    await page.emulateMedia({ media: "print" });
+
     const htmlContent = renderReportDocumentHtml(snapshot);
 
     await page.setContent(htmlContent, {
       waitUntil: "networkidle",
     });
 
+    // Playwright margin set to 0 because @page and CSS manage exact margins
+    // allowing the letterhead (kop surat) to expand wider without clipping
     const pdfBuffer = await page.pdf({
       format: "A4",
       landscape: snapshot.template.page.orientation === "landscape",
       printBackground: true,
       margin: {
-        top: `${snapshot.template.page.marginsMm.top}mm`,
-        right: `${snapshot.template.page.marginsMm.right}mm`,
-        bottom: `${snapshot.template.page.marginsMm.bottom}mm`,
-        left: `${snapshot.template.page.marginsMm.left}mm`,
+        top: "0mm",
+        right: "0mm",
+        bottom: "0mm",
+        left: "0mm",
       },
       displayHeaderFooter: snapshot.template.page.showPageNumbers,
       footerTemplate: `
@@ -72,4 +77,3 @@ export async function generatePdfBufferFromSnapshot(
     await page.close();
   }
 }
-

@@ -9,6 +9,35 @@ export const templateHeaderSchema = z.object({
   institutionContact: z.string().trim().optional(),
   logoStorageKey: z.string().nullable().optional(),
   reportTitle: z.string().trim().min(2, "Judul Laporan wajib diisi"),
+  titleFontFamily: z.string().optional().default("Arial, sans-serif"),
+  titleFontSizePt: z.number().min(8).max(24).optional().default(11),
+  titleFontWeight: z.enum(["normal", "bold", "500", "600"]).optional().default("bold"),
+  titleLetterSpacing: z.string().optional().default("0.5px"),
+
+  // Tipografi Judul Kop / Cover Atas
+  ministryFontFamily: z.string().optional().default("Arial, sans-serif"),
+  ministryFontSizePt: z.number().min(7).max(24).optional().default(10.5),
+  ministryFontWeight: z.enum(["normal", "bold", "500", "600"]).optional().default("normal"),
+  directorateFontFamily: z.string().optional().default("Arial, sans-serif"),
+  directorateFontSizePt: z.number().min(7).max(24).optional().default(10),
+  directorateFontWeight: z.enum(["normal", "bold", "500", "600"]).optional().default("bold"),
+  institutionFontFamily: z.string().optional().default("Arial, sans-serif"),
+  institutionFontSizePt: z.number().min(7).max(24).optional().default(12.5),
+  institutionFontWeight: z.enum(["normal", "bold", "500", "600"]).optional().default("bold"),
+
+  // Margin Khusus Kop Surat (Lebih wide & rapat ke tepi kertas dibanding body)
+  kopMarginsMm: z
+    .object({
+      top: z.number().min(0).max(60).default(15),
+      left: z.number().min(0).max(60).default(15),
+      right: z.number().min(0).max(60).default(15),
+    })
+    .optional()
+    .default({
+      top: 15,
+      left: 15,
+      right: 15,
+    }),
 });
 
 export const templatePageSchema = z.object({

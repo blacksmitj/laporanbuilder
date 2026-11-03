@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema";
 import type { SaveReportContentInput } from "@/lib/validations/content-schema";
 import { getReportType } from "@/report-types/registry";
+import { buildLpdMonitoringRegionIntro } from "@/report-types/lpd-monev-tkm/narrative-rules";
 import {
   type Actor,
   assertReportAccess,
@@ -53,9 +54,37 @@ export async function getReportContentData(reportId: string, actor: Actor) {
   if (definition?.sections) {
     for (const sec of definition.sections) {
       if (!contentsMap[sec.key] && sec.defaultContent) {
-        contentsMap[sec.key] = sec.defaultContent;
+        contentsMap[sec.key] = { ...sec.defaultContent };
       }
     }
+  }
+
+  // Auto-populate or refresh point e monitoring region if not yet customized
+  const sectionB = contentsMap.section_b_summary as
+    | {
+        monitoringRegionIntro?: string;
+        introText?: string;
+        showParticipantTable?: boolean;
+      }
+    | undefined;
+
+  if (sectionB && (!sectionB.monitoringRegionIntro || sectionB.monitoringRegionIntro.includes("[Wilayah Monitoring]"))) {
+    const metaRegion = typeof report.metadata === "object" && report.metadata !== null
+      ? (report.metadata as Record<string, unknown>).region as string | undefined
+      : undefined;
+
+    const { pointE, tableIntro } = buildLpdMonitoringRegionIntro(
+      selectedParticipants.map((p) => ({
+        normalizedData: p.normalizedData as Record<string, unknown>,
+      })),
+      metaRegion,
+    );
+
+    contentsMap.section_b_summary = {
+      ...sectionB,
+      monitoringRegionIntro: pointE,
+      introText: sectionB.introText || tableIntro,
+    };
   }
 
   const narrativesMap: Record<string, string> = {};

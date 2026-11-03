@@ -19,6 +19,7 @@ import { putStorageObject, storageKeys } from "@/lib/storage";
 import {
   buildLpdBusinessAddress,
   buildLpdBusinessDescription,
+  buildLpdMonitoringRegionIntro,
 } from "@/report-types/lpd-monev-tkm/narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "@/report-types/lpd-monev-tkm/row-schema";
 import { getReportType } from "@/report-types/registry";
@@ -33,9 +34,16 @@ import { recordAuditLog } from "./audit-service";
 export async function buildReportSnapshotPayload(
   reportId: string,
   actor: Actor,
+  overrideTemplateVersionId?: string | null,
+  overrideTemplateConfig?: TemplateConfiguration | null,
 ): Promise<ReportDocumentSnapshot> {
   const report = await assertReportAccess(reportId, actor);
   const definition = getReportType(report.reportType);
+
+  const effectiveTemplateVersionId =
+    overrideTemplateVersionId !== undefined
+      ? overrideTemplateVersionId
+      : report.templateVersionId;
 
   const [
     assignedOfficials,
@@ -76,28 +84,31 @@ export async function buildReportSnapshotPayload(
       .where(eq(reportParticipants.reportId, reportId))
       .orderBy(asc(reportParticipants.sortOrder)),
     // Resolve Template Version (PRD §9)
-    report.templateVersionId
-      ? db
-          .select()
-          .from(reportTemplateVersions)
-          .where(eq(reportTemplateVersions.id, report.templateVersionId))
-          .limit(1)
-      : db
-          .select({
-            version: reportTemplateVersions.version,
-            configuration: reportTemplateVersions.configuration,
-          })
-          .from(reportTemplateVersions)
-          .innerJoin(
-            reportTemplates,
-            eq(reportTemplateVersions.templateId, reportTemplates.id),
-          )
-          .where(eq(reportTemplates.reportType, report.reportType))
-          .orderBy(desc(reportTemplateVersions.version))
-          .limit(1),
+    overrideTemplateConfig
+      ? Promise.resolve([])
+      : effectiveTemplateVersionId
+        ? db
+            .select()
+            .from(reportTemplateVersions)
+            .where(eq(reportTemplateVersions.id, effectiveTemplateVersionId))
+            .limit(1)
+        : db
+            .select({
+              version: reportTemplateVersions.version,
+              configuration: reportTemplateVersions.configuration,
+            })
+            .from(reportTemplateVersions)
+            .innerJoin(
+              reportTemplates,
+              eq(reportTemplateVersions.templateId, reportTemplates.id),
+            )
+            .where(eq(reportTemplates.reportType, report.reportType))
+            .orderBy(desc(reportTemplateVersions.version))
+            .limit(1),
   ]);
 
   const templateConfig =
+    overrideTemplateConfig ||
     (activeTemplateVersion[0]?.configuration as unknown as TemplateConfiguration) ||
     definition?.defaultTemplate;
 
@@ -108,6 +119,43 @@ export async function buildReportSnapshotPayload(
   const sectionsMap: Record<string, unknown> = {};
   for (const c of contents) {
     sectionsMap[c.sectionKey] = c.content;
+  }
+
+  // Ensure default sections if not present
+  if (definition?.sections) {
+    for (const sec of definition.sections) {
+      if (!sectionsMap[sec.key] && sec.defaultContent) {
+        sectionsMap[sec.key] = { ...sec.defaultContent };
+      }
+    }
+  }
+
+  // Check and populate monitoring region intro for Section B
+  const sectionB = sectionsMap.section_b_summary as
+    | {
+        monitoringRegionIntro?: string;
+        introText?: string;
+        showParticipantTable?: boolean;
+      }
+    | undefined;
+
+  if (sectionB && (!sectionB.monitoringRegionIntro || sectionB.monitoringRegionIntro.includes("[Wilayah Monitoring]"))) {
+    const metaRegion = typeof report.metadata === "object" && report.metadata !== null
+      ? (report.metadata as Record<string, unknown>).region as string | undefined
+      : undefined;
+
+    const { pointE, tableIntro } = buildLpdMonitoringRegionIntro(
+      selectedParticipants.map((p) => ({
+        normalizedData: p.normalizedData as Record<string, unknown>,
+      })),
+      metaRegion,
+    );
+
+    sectionsMap.section_b_summary = {
+      ...sectionB,
+      monitoringRegionIntro: pointE,
+      introText: sectionB.introText || tableIntro,
+    };
   }
 
   const participantsList = selectedParticipants.map((p) => {
@@ -143,14 +191,34 @@ export async function buildReportSnapshotPayload(
   };
 }
 
-export async function getReportHtmlPreview(reportId: string, actor: Actor) {
-  const snapshot = await buildReportSnapshotPayload(reportId, actor);
+export async function getReportHtmlPreview(
+  reportId: string,
+  actor: Actor,
+  overrideTemplateVersionId?: string | null,
+  overrideTemplateConfig?: TemplateConfiguration | null,
+) {
+  const snapshot = await buildReportSnapshotPayload(
+    reportId,
+    actor,
+    overrideTemplateVersionId,
+    overrideTemplateConfig,
+  );
   return renderReportDocumentHtml(snapshot);
 }
 
-export async function generateReportPdf(reportId: string, actor: Actor) {
+export async function generateReportPdf(
+  reportId: string,
+  actor: Actor,
+  overrideTemplateVersionId?: string | null,
+  overrideTemplateConfig?: TemplateConfiguration | null,
+) {
   const report = await assertReportAccess(reportId, actor);
-  const snapshotPayload = await buildReportSnapshotPayload(reportId, actor);
+  const snapshotPayload = await buildReportSnapshotPayload(
+    reportId,
+    actor,
+    overrideTemplateVersionId,
+    overrideTemplateConfig,
+  );
 
   // Determine next snapshot version
   const latestSnapshots = await db

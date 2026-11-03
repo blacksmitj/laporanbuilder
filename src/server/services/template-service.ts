@@ -253,3 +253,82 @@ export async function createTemplateVersion(
   return newVersion;
 }
 
+export async function updateTemplateVersion(
+  templateId: string,
+  versionNumber: number,
+  input: CreateTemplateVersionInput,
+  actor: Actor,
+) {
+  const [existingVersion] = await db
+    .select()
+    .from(reportTemplateVersions)
+    .where(
+      and(
+        eq(reportTemplateVersions.templateId, templateId),
+        eq(reportTemplateVersions.version, versionNumber),
+      ),
+    )
+    .limit(1);
+
+  if (!existingVersion) {
+    throw new HttpError(404, `Versi #${versionNumber} tidak ditemukan.`);
+  }
+
+  const [updatedVersion] = await db
+    .update(reportTemplateVersions)
+    .set({
+      configuration: input.configuration as unknown as Record<string, unknown>,
+    })
+    .where(eq(reportTemplateVersions.id, existingVersion.id))
+    .returning();
+
+  await recordAuditLog({
+    userId: actor.id,
+    action: "template_version.updated",
+    metadata: {
+      templateId,
+      version: versionNumber,
+    },
+  });
+
+  return updatedVersion;
+}
+
+export async function deleteTemplateVersion(
+  templateId: string,
+  versionNumber: number,
+  actor: Actor,
+) {
+  const allVersions = await db
+    .select()
+    .from(reportTemplateVersions)
+    .where(eq(reportTemplateVersions.templateId, templateId));
+
+  if (allVersions.length <= 1) {
+    throw new HttpError(
+      400,
+      "Tidak dapat menghapus versi satu-satunya. Template minimal harus memiliki 1 versi.",
+    );
+  }
+
+  const targetVersion = allVersions.find((v) => v.version === versionNumber);
+  if (!targetVersion) {
+    throw new HttpError(404, `Versi #${versionNumber} tidak ditemukan.`);
+  }
+
+  await db
+    .delete(reportTemplateVersions)
+    .where(eq(reportTemplateVersions.id, targetVersion.id));
+
+  await recordAuditLog({
+    userId: actor.id,
+    action: "template_version.deleted",
+    metadata: {
+      templateId,
+      version: versionNumber,
+    },
+  });
+
+  return { success: true, deletedVersion: versionNumber };
+}
+

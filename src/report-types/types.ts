@@ -57,6 +57,28 @@ export interface TemplateHeaderConfig {
   institutionContact?: string;
   logoStorageKey?: string | null;
   reportTitle: string;
+  titleFontFamily?: string;
+  titleFontSizePt?: number;
+  titleFontWeight?: "normal" | "bold" | "500" | "600";
+  titleLetterSpacing?: string;
+
+  // Tipografi Khusus Judul Kop Surat / Cover Atas
+  ministryFontFamily?: string;
+  ministryFontSizePt?: number;
+  ministryFontWeight?: "normal" | "bold" | "500" | "600";
+  directorateFontFamily?: string;
+  directorateFontSizePt?: number;
+  directorateFontWeight?: "normal" | "bold" | "500" | "600";
+  institutionFontFamily?: string;
+  institutionFontSizePt?: number;
+  institutionFontWeight?: "normal" | "bold" | "500" | "600";
+
+  // Margin Khusus Kop Surat (mm dari tepi kertas)
+  kopMarginsMm?: {
+    top: number;
+    left: number;
+    right: number;
+  };
 }
 
 export interface TemplatePageConfig {

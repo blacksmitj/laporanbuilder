@@ -38,6 +38,7 @@ export const updateReportSchema = z.object({
     .max(2100, "Tahun anggaran maksimal 2100")
     .optional(),
   status: reportStatusSchema.optional(),
+  templateVersionId: z.string().uuid("ID versi template tidak valid").nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   officials: z.array(reportOfficialAssignmentSchema).optional(),
   expectedVersion: z.number().int().positive().optional(),

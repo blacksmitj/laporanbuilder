@@ -12,10 +12,21 @@ import {
   Loader2,
   Save,
   Sliders,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,6 +84,47 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
     template.latestVersion?.version ?? 1,
   );
 
+  const [versionToDelete, setVersionToDelete] = useState<number | null>(null);
+
+  // 1. Simpan Pembaruan ke Versi yang Sedang Dibuka
+  const updateVersionMutation = useMutation({
+    mutationFn: async ({
+      version,
+      updatedConfig,
+    }: {
+      version: number;
+      updatedConfig: TemplateConfigurationInput;
+    }) => {
+      const res = await fetch(`/api/templates/${template.id}/versions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version,
+          configuration: updatedConfig,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Gagal memperbarui versi template.");
+      return json.data as TemplateVersionItem;
+    },
+    onSuccess: (ver) => {
+      toast.add({
+        title: "Perubahan Disimpan",
+        description: `Versi #${ver.version} berhasil diperbarui.`,
+        type: "success",
+      });
+      router.refresh();
+    },
+    onError: (err: Error) => {
+      toast.add({
+        title: "Gagal menyimpan perubahan",
+        description: err.message,
+        type: "error",
+      });
+    },
+  });
+
+  // 2. Simpan Sebagai Versi Baru
   const newVersionMutation = useMutation({
     mutationFn: async (newConfig: TemplateConfigurationInput) => {
       const res = await fetch(`/api/templates/${template.id}/versions`, {
@@ -81,27 +133,69 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
         body: JSON.stringify({ configuration: newConfig }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Gagal menyimpan versi template.");
+      if (!res.ok) throw new Error(json.error ?? "Gagal menyimpan versi baru template.");
       return json.data as TemplateVersionItem;
     },
     onSuccess: (ver) => {
+      setSelectedVersionNum(ver.version);
       toast.add({
         title: "Versi Baru Disimpan",
-        description: `Template berhasil diperbarui ke Versi #${ver.version}. Dokumen lama tetap terjaga.`,
+        description: `Template berhasil disimpan ke Versi #${ver.version}.`,
         type: "success",
       });
       router.refresh();
     },
     onError: (err: Error) => {
       toast.add({
-        title: "Gagal menyimpan versi",
+        title: "Gagal menyimpan versi baru",
         description: err.message,
         type: "error",
       });
     },
   });
 
-  function handleSave() {
+  // 3. Hapus Versi Tertentu
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (versionNum: number) => {
+      const res = await fetch(
+        `/api/templates/${template.id}/versions?version=${versionNum}`,
+        { method: "DELETE" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Gagal menghapus versi template.");
+      return json;
+    },
+    onSuccess: (_, deletedVer) => {
+      toast.add({
+        title: "Versi Dihapus",
+        description: `Versi #${deletedVer} berhasil dihapus dari sistem.`,
+        type: "success",
+      });
+      setVersionToDelete(null);
+      // Pindahkan pilihan ke versi pertama yang tersisa
+      const remaining = template.versions.filter((v) => v.version !== deletedVer);
+      if (remaining[0]) {
+        handleSwitchVersion(remaining[0].version);
+      }
+      router.refresh();
+    },
+    onError: (err: Error) => {
+      toast.add({
+        title: "Gagal menghapus versi",
+        description: err.message,
+        type: "error",
+      });
+    },
+  });
+
+  function handleUpdateCurrent() {
+    updateVersionMutation.mutate({
+      version: selectedVersionNum,
+      updatedConfig: config,
+    });
+  }
+
+  function handleSaveAsNew() {
     newVersionMutation.mutate(config);
   }
 
@@ -147,15 +241,34 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Tombol 1: Simpan & Update Versi Ini */}
           <Button
-            disabled={newVersionMutation.isPending}
-            onClick={handleSave}
+            variant="outline"
+            disabled={
+              updateVersionMutation.isPending || newVersionMutation.isPending
+            }
+            onClick={handleUpdateCurrent}
+          >
+            {updateVersionMutation.isPending ? (
+              <Loader2 className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-1.5 size-4" />
+            )}
+            Simpan Versi #{selectedVersionNum}
+          </Button>
+
+          {/* Tombol 2: Simpan Sebagai Versi Baru */}
+          <Button
+            disabled={
+              newVersionMutation.isPending || updateVersionMutation.isPending
+            }
+            onClick={handleSaveAsNew}
           >
             {newVersionMutation.isPending ? (
               <Loader2 className="mr-1.5 size-4 animate-spin" />
             ) : (
-              <Save className="mr-1.5 size-4" />
+              <Copy className="mr-1.5 size-4" />
             )}
             Simpan Sebagai Versi Baru
           </Button>
@@ -172,24 +285,26 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                 Riwayat Versi
               </CardTitle>
               <CardDescription className="text-xs">
-                Setiap penyimpanan menghasilkan versi baru (immutable).
+                Pilih versi untuk mengedit atau melihat konfigurasinya.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {template.versions.map((v) => (
-                <button
+                <div
                   key={v.id}
-                  type="button"
-                  onClick={() => handleSwitchVersion(v.version)}
-                  className={`flex w-full items-center justify-between rounded-lg border p-2.5 text-left text-xs transition-colors ${
+                  className={`group flex items-center justify-between rounded-lg border p-2.5 text-xs transition-colors ${
                     v.version === selectedVersionNum
                       ? "border-primary bg-primary/5 font-semibold text-primary"
                       : "hover:bg-muted/50"
                   }`}
                 >
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchVersion(v.version)}
+                    className="flex-1 text-left"
+                  >
                     <div>Versi #{v.version}</div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[10px] text-muted-foreground font-normal">
                       {new Date(v.createdAt).toLocaleDateString("id-ID", {
                         day: "2-digit",
                         month: "short",
@@ -198,11 +313,28 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                         minute: "2-digit",
                       })}
                     </div>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {v.version === selectedVersionNum && (
+                      <Check className="size-4 text-primary shrink-0 mr-1" />
+                    )}
+                    {/* Tombol Hapus Versi (hanya jika ada lebih dari 1 versi) */}
+                    {template.versions.length > 1 && (
+                      <button
+                        type="button"
+                        title={`Hapus Versi #${v.version}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVersionToDelete(v.version);
+                        }}
+                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
                   </div>
-                  {v.version === selectedVersionNum && (
-                    <Check className="size-4 text-primary" />
-                  )}
-                </button>
+                </div>
               ))}
             </CardContent>
           </Card>
@@ -249,57 +381,332 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                     />
                   </div>
 
-                  <FieldGroup className="gap-3">
-                    <Field>
-                      <FieldLabel>Nama Kementerian</FieldLabel>
-                      <Input
-                        disabled={config.header.showKop === false}
-                        value={config.header.ministryName}
-                        onChange={(e) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            header: {
-                              ...prev.header,
-                              ministryName: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
+                  <FieldGroup className="gap-4">
+                    {/* 1. Nama Kementerian */}
+                    <div className="space-y-2 rounded-lg border p-3.5 bg-muted/10">
+                      <Field>
+                        <FieldLabel className="font-semibold">Nama Kementerian</FieldLabel>
+                        <Input
+                          disabled={config.header.showKop === false}
+                          value={config.header.ministryName}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              header: {
+                                ...prev.header,
+                                ministryName: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-3 pt-1">
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Jenis Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.ministryFontFamily ?? "Arial, sans-serif"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  ministryFontFamily: e.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="Arial, sans-serif">
+                              Arial (Standar)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Arial Narrow', Arial, sans-serif">
+                              Arial Narrow (Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Helvetica Neue', Helvetica, Arial, sans-serif">
+                              Helvetica Neue (Modern &amp; Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Calibri Light', Calibri, sans-serif">
+                              Calibri Light (Ramping Bersih)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Times New Roman', serif">
+                              Times New Roman (Klasik / Formal)
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ukuran Font (Pt)</FieldLabel>
+                          <Input
+                            type="number"
+                            step={0.5}
+                            min={7}
+                            max={20}
+                            disabled={config.header.showKop === false}
+                            value={config.header.ministryFontSizePt ?? 10.5}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  ministryFontSizePt: Number(e.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ketebalan Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.ministryFontWeight ?? "normal"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  ministryFontWeight: e.target.value as "normal" | "bold" | "500" | "600",
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="normal">Normal (Ramping)</NativeSelectOption>
+                            <NativeSelectOption value="500">Medium (500)</NativeSelectOption>
+                            <NativeSelectOption value="600">Semi-Bold (600)</NativeSelectOption>
+                            <NativeSelectOption value="bold">Bold (Tebal)</NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                      </div>
+                    </div>
 
-                    <Field>
-                      <FieldLabel>Nama Direktorat Jenderal</FieldLabel>
-                      <Input
-                        disabled={config.header.showKop === false}
-                        value={config.header.directorateName}
-                        onChange={(e) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            header: {
-                              ...prev.header,
-                              directorateName: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
+                    {/* 2. Nama Direktorat Jenderal */}
+                    <div className="space-y-2 rounded-lg border p-3.5 bg-muted/10">
+                      <Field>
+                        <FieldLabel className="font-semibold">Nama Direktorat Jenderal</FieldLabel>
+                        <Input
+                          disabled={config.header.showKop === false}
+                          value={config.header.directorateName}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              header: {
+                                ...prev.header,
+                                directorateName: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-3 pt-1">
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Jenis Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.directorateFontFamily ?? "Arial, sans-serif"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  directorateFontFamily: e.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="Arial, sans-serif">
+                              Arial (Standar)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Arial Narrow', Arial, sans-serif">
+                              Arial Narrow (Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Helvetica Neue', Helvetica, Arial, sans-serif">
+                              Helvetica Neue (Modern &amp; Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Calibri Light', Calibri, sans-serif">
+                              Calibri Light (Ramping Bersih)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Times New Roman', serif">
+                              Times New Roman (Klasik / Formal)
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ukuran Font (Pt)</FieldLabel>
+                          <Input
+                            type="number"
+                            step={0.5}
+                            min={7}
+                            max={20}
+                            disabled={config.header.showKop === false}
+                            value={config.header.directorateFontSizePt ?? 10}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  directorateFontSizePt: Number(e.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ketebalan Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.directorateFontWeight ?? "bold"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  directorateFontWeight: e.target.value as "normal" | "bold" | "500" | "600",
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="normal">Normal (Ramping)</NativeSelectOption>
+                            <NativeSelectOption value="500">Medium (500)</NativeSelectOption>
+                            <NativeSelectOption value="600">Semi-Bold (600)</NativeSelectOption>
+                            <NativeSelectOption value="bold">Bold (Tebal)</NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                      </div>
+                    </div>
 
-                    <Field>
-                      <FieldLabel>Nama Balai / Instansi Pelaksana</FieldLabel>
-                      <Input
-                        disabled={config.header.showKop === false}
-                        value={config.header.institutionName}
-                        onChange={(e) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            header: {
-                              ...prev.header,
-                              institutionName: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
+                    {/* 3. Nama Balai / Instansi Pelaksana */}
+                    <div className="space-y-2 rounded-lg border p-3.5 bg-muted/10">
+                      <Field>
+                        <FieldLabel className="font-semibold">Nama Balai / Instansi Pelaksana</FieldLabel>
+                        <Input
+                          disabled={config.header.showKop === false}
+                          value={config.header.institutionName}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              header: {
+                                ...prev.header,
+                                institutionName: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-3 pt-1">
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Jenis Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.institutionFontFamily ?? "Arial, sans-serif"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  institutionFontFamily: e.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="Arial, sans-serif">
+                              Arial (Standar)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Arial Narrow', Arial, sans-serif">
+                              Arial Narrow (Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Helvetica Neue', Helvetica, Arial, sans-serif">
+                              Helvetica Neue (Modern &amp; Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Calibri Light', Calibri, sans-serif">
+                              Calibri Light (Ramping Bersih)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Times New Roman', serif">
+                              Times New Roman (Klasik / Formal)
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ukuran Font (Pt)</FieldLabel>
+                          <Input
+                            type="number"
+                            step={0.5}
+                            min={7}
+                            max={24}
+                            disabled={config.header.showKop === false}
+                            value={config.header.institutionFontSizePt ?? 12.5}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  institutionFontSizePt: Number(e.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Ketebalan Font</FieldLabel>
+                          <NativeSelect
+                            disabled={config.header.showKop === false}
+                            value={config.header.institutionFontWeight ?? "bold"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  institutionFontWeight: e.target.value as "normal" | "bold" | "500" | "600",
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="normal">Normal (Ramping)</NativeSelectOption>
+                            <NativeSelectOption value="500">Medium (500)</NativeSelectOption>
+                            <NativeSelectOption value="600">Semi-Bold (600)</NativeSelectOption>
+                            <NativeSelectOption value="bold">Bold (Tebal)</NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                      </div>
+                    </div>
+
+                    {/* Pratinjau Kop Surat Mini */}
+                    {config.header.showKop !== false && (
+                      <div className="rounded-lg border p-3.5 bg-background space-y-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Pratinjau Tipografi Kop Surat (Cover Atas):
+                        </div>
+                        <div className="border-l-2 border-primary/50 pl-3 py-1 space-y-1">
+                          <div
+                            className="leading-tight text-foreground"
+                            style={{
+                              fontFamily: config.header.ministryFontFamily ?? "Arial, sans-serif",
+                              fontSize: `${config.header.ministryFontSizePt ?? 10.5}pt`,
+                              fontWeight: config.header.ministryFontWeight ?? "normal",
+                            }}
+                          >
+                            {config.header.ministryName || "KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA"}
+                          </div>
+                          <div
+                            className="leading-tight text-foreground"
+                            style={{
+                              fontFamily: config.header.directorateFontFamily ?? "Arial, sans-serif",
+                              fontSize: `${config.header.directorateFontSizePt ?? 10}pt`,
+                              fontWeight: config.header.directorateFontWeight ?? "bold",
+                            }}
+                          >
+                            {config.header.directorateName || "DIREKTORAT JENDERAL..."}
+                          </div>
+                          <div
+                            className="leading-tight text-primary font-semibold"
+                            style={{
+                              fontFamily: config.header.institutionFontFamily ?? "Arial, sans-serif",
+                              fontSize: `${config.header.institutionFontSizePt ?? 12.5}pt`,
+                              fontWeight: config.header.institutionFontWeight ?? "bold",
+                            }}
+                          >
+                            {config.header.institutionName || "BALAI BESAR PERLUASAN KESEMPATAN KERJA"}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <Field>
                       <FieldLabel>Alamat Lengkap Instansi</FieldLabel>
@@ -336,6 +743,89 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                       />
                     </Field>
 
+                    {/* Margin Khusus Kop Surat (Wide Header) */}
+                    <div className="space-y-3 rounded-lg border p-4 bg-muted/10">
+                      <div className="space-y-0.5">
+                        <FieldLabel className="text-sm font-semibold">
+                          Margin Khusus Kop Surat (Milimeter dari Tepi Kertas)
+                        </FieldLabel>
+                        <p className="text-xs text-muted-foreground">
+                          Atur nilai lebih kecil dari margin dokumen agar kop surat lebih lebar (wide) dan lebih dekat ke tepi atas kertas.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 pt-1">
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Atas (Top Kop)</FieldLabel>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={50}
+                            disabled={config.header.showKop === false}
+                            value={config.header.kopMarginsMm?.top ?? 15}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  kopMarginsMm: {
+                                    top: Number(e.target.value),
+                                    left: prev.header.kopMarginsMm?.left ?? 15,
+                                    right: prev.header.kopMarginsMm?.right ?? 15,
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Kiri (Left Kop)</FieldLabel>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={50}
+                            disabled={config.header.showKop === false}
+                            value={config.header.kopMarginsMm?.left ?? 15}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  kopMarginsMm: {
+                                    top: prev.header.kopMarginsMm?.top ?? 15,
+                                    left: Number(e.target.value),
+                                    right: prev.header.kopMarginsMm?.right ?? 15,
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel className="text-xs text-muted-foreground">Kanan (Right Kop)</FieldLabel>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={50}
+                            disabled={config.header.showKop === false}
+                            value={config.header.kopMarginsMm?.right ?? 15}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  kopMarginsMm: {
+                                    top: prev.header.kopMarginsMm?.top ?? 15,
+                                    left: prev.header.kopMarginsMm?.left ?? 15,
+                                    right: Number(e.target.value),
+                                  },
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </div>
+
                     <Field>
                       <FieldLabel>Judul Utama Dokumen</FieldLabel>
                       <Input
@@ -351,6 +841,130 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                         }
                       />
                     </Field>
+
+                    <div className="rounded-lg border p-4 bg-muted/20 space-y-4">
+                      <div className="font-medium text-sm text-foreground">
+                        Pengaturan Tipografi Judul Dokumen
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field>
+                          <FieldLabel>Jenis Font Judul</FieldLabel>
+                          <NativeSelect
+                            value={config.header.titleFontFamily ?? "Arial, sans-serif"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleFontFamily: e.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="'Arial Narrow', Arial, sans-serif">
+                              Arial Narrow (Ramping / Hemat Ruang)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Helvetica Neue', Helvetica, Arial, sans-serif">
+                              Helvetica Neue (Modern &amp; Ramping)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Calibri Light', Calibri, sans-serif">
+                              Calibri Light (Ramping &amp; Bersih)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="Arial, sans-serif">
+                              Arial (Standar)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="'Times New Roman', serif">
+                              Times New Roman (Klasik / Formal)
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+
+                        <Field>
+                          <FieldLabel>Ketebalan Huruf (Font Weight)</FieldLabel>
+                          <NativeSelect
+                            value={config.header.titleFontWeight ?? "bold"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleFontWeight: e.target.value as "normal" | "bold" | "500" | "600",
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="normal">
+                              Normal (Ramping / Ringan)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="500">
+                              Medium (500)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="600">
+                              Semi-Bold (600)
+                            </NativeSelectOption>
+                            <NativeSelectOption value="bold">
+                              Bold (Tebal)
+                            </NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+
+                        <Field>
+                          <FieldLabel>Ukuran Font Judul (Pt)</FieldLabel>
+                          <Input
+                            type="number"
+                            min={9}
+                            max={20}
+                            value={config.header.titleFontSizePt ?? 11}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleFontSizePt: Number(e.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </Field>
+
+                        <Field>
+                          <FieldLabel>Jarak Huruf (Letter Spacing)</FieldLabel>
+                          <NativeSelect
+                            value={config.header.titleLetterSpacing ?? "0.5px"}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                header: {
+                                  ...prev.header,
+                                  titleLetterSpacing: e.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <NativeSelectOption value="normal">Rapat (Normal)</NativeSelectOption>
+                            <NativeSelectOption value="0.5px">Standar (0.5px)</NativeSelectOption>
+                            <NativeSelectOption value="1px">Renggang Ramping (1px)</NativeSelectOption>
+                            <NativeSelectOption value="1.5px">Sangat Renggang (1.5px)</NativeSelectOption>
+                          </NativeSelect>
+                        </Field>
+                      </div>
+
+                      {/* Pratinjau Teks Judul */}
+                      <div className="pt-2 border-t text-xs text-muted-foreground space-y-1.5">
+                        <span>Pratinjau Judul:</span>
+                        <div
+                          className="p-3 border rounded bg-background text-center text-foreground uppercase"
+                          style={{
+                            fontFamily: config.header.titleFontFamily ?? "Arial, sans-serif",
+                            fontSize: `${config.header.titleFontSizePt ?? 11}pt`,
+                            fontWeight: config.header.titleFontWeight ?? "bold",
+                            letterSpacing: config.header.titleLetterSpacing ?? "0.5px",
+                          }}
+                        >
+                          {config.header.reportTitle || "LAPORAN PERJALANAN DINAS"}
+                        </div>
+                      </div>
+                    </div>
                   </FieldGroup>
                 </CardContent>
               </Card>
@@ -630,6 +1244,42 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
           </Tabs>
         </div>
       </div>
+
+      {/* Dialog Konfirmasi Hapus Versi */}
+      <AlertDialog
+        open={versionToDelete !== null}
+        onOpenChange={(open) => !open && setVersionToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Versi #{versionToDelete}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Versi ini akan dihapus permanen dari riwayat template. Dokumen yang tidak secara khusus dikunci ke versi ini akan beralih menggunakan versi terbaru lainnya. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteVersionMutation.isPending}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteVersionMutation.isPending}
+              onClick={() => {
+                if (versionToDelete !== null) {
+                  deleteVersionMutation.mutate(versionToDelete);
+                }
+              }}
+            >
+              {deleteVersionMutation.isPending ? (
+                <Loader2 className="mr-1.5 size-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-1.5 size-4" />
+              )}
+              Hapus Versi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

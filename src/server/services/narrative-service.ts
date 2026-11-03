@@ -204,6 +204,44 @@ export async function enhanceNarrativeWithAi(
   };
 }
 
+export async function polishIntroNarrativeWithAi(
+  reportId: string,
+  currentIntro: string,
+  actor: Actor,
+) {
+  const report = await assertReportAccess(reportId, actor);
+  const aiProvider = getAiProvider();
+
+  const aiResult = await aiProvider.enhance({
+    task: "improve_narrative",
+    facts: {
+      reportName: report.name,
+      fiscalYear: report.fiscalYear,
+    },
+    draft: currentIntro,
+    constraints: [
+      "Pertahankan nama kabupaten/kota, provinsi, serta konteks kegiatan (TKM Lanjutan).",
+      "Keluarkan HANYA kalimat hasil perbaikan tanpa tanda kutip, tanpa penjelasan tambahan, dan tanpa markdown formatting.",
+    ],
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    reportId,
+    action: "intro_narrative.ai_enhanced",
+    metadata: {
+      model: aiResult.model,
+      durationMs: aiResult.durationMs,
+    },
+  });
+
+  return {
+    text: aiResult.text.trim(),
+    model: aiResult.model,
+    durationMs: aiResult.durationMs,
+  };
+}
+
 export async function updateParticipantNarrative(
   reportId: string,
   participantId: string,
