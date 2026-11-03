@@ -185,3 +185,60 @@ export function buildLpdMonitoringRegionIntro(
 
   return { pointE, tableIntro };
 }
+
+/**
+ * Format subject / maksud perjalanan dinas text based on selected participants' locations and fiscal year.
+ * e.g. "Monitoring dan Evaluasi Peserta TKM Lanjutan tahun Anggaran 2026 di Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah;"
+ */
+export function buildLpdSubjectMaksud(
+  participants: Array<{
+    interviewRegency?: string | null;
+    interviewProvince?: string | null;
+    normalizedData?: Record<string, unknown> | null;
+  }>,
+  fiscalYear: number | string = 2026,
+  fallbackRegion?: string | null,
+): string {
+  const regenciesSet = new Set<string>();
+  const provincesSet = new Set<string>();
+
+  for (const p of participants) {
+    const regency =
+      p.interviewRegency ||
+      (typeof p.normalizedData?.interviewRegency === "string"
+        ? (p.normalizedData.interviewRegency as string)
+        : null);
+
+    const province =
+      p.interviewProvince ||
+      (typeof p.normalizedData?.interviewProvince === "string"
+        ? (p.normalizedData.interviewProvince as string)
+        : null);
+
+    if (regency?.trim()) regenciesSet.add(regency.trim());
+    if (province?.trim()) provincesSet.add(province.trim());
+  }
+
+  const regencyList = Array.from(regenciesSet);
+  const provinceList = Array.from(provincesSet);
+
+  let locationText = "";
+  if (regencyList.length > 0) {
+    if (regencyList.length === 1) {
+      locationText = regencyList[0];
+    } else {
+      const last = regencyList[regencyList.length - 1];
+      const initial = regencyList.slice(0, -1).join(", ");
+      locationText = `${initial} dan ${last}`;
+    }
+
+    if (provinceList.length > 0) {
+      locationText += ` - Provinsi ${provinceList.join(", ")}`;
+    }
+  } else if (fallbackRegion?.trim()) {
+    locationText = fallbackRegion.trim();
+  }
+
+  const locSuffix = locationText ? ` di ${locationText};` : ";";
+  return `Monitoring dan Evaluasi Peserta TKM Lanjutan tahun Anggaran ${fiscalYear}${locSuffix}`;
+}

@@ -15,6 +15,7 @@ interface DynamicMetadataFieldsProps {
   errors?: Record<string, string>;
   onChange: (name: string, value: unknown) => void;
   disabled?: boolean;
+  fieldActions?: Record<string, React.ReactNode>;
 }
 
 export function DynamicMetadataFields({
@@ -23,6 +24,7 @@ export function DynamicMetadataFields({
   errors,
   onChange,
   disabled,
+  fieldActions,
 }: DynamicMetadataFieldsProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -38,12 +40,15 @@ export function DynamicMetadataFields({
             data-invalid={Boolean(errorMessage)}
             className={field.colSpan === 2 ? "sm:col-span-2" : undefined}
           >
-            <FieldLabel htmlFor={`meta-${field.name}`}>
-              {field.label}
-              {field.required && (
-                <span className="ml-0.5 text-destructive">*</span>
-              )}
-            </FieldLabel>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel htmlFor={`meta-${field.name}`}>
+                {field.label}
+                {field.required && (
+                  <span className="ml-0.5 text-destructive">*</span>
+                )}
+              </FieldLabel>
+              {fieldActions?.[field.name]}
+            </div>
 
             {field.type === "textarea" ? (
               <Textarea

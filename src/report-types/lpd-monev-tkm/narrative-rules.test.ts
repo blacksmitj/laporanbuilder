@@ -5,6 +5,7 @@ import {
   buildLpdBusinessDescription,
   buildLpdMonitoringRegionIntro,
   buildLpdParticipantRulesNarrative,
+  buildLpdSubjectMaksud,
 } from "./narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "./row-schema";
 
@@ -109,6 +110,12 @@ describe("LPD Monev TKM Rules Narrative Engine (Pekalongan 2026 Style)", () => {
     assert.equal(
       result.tableIntro,
       "Adapun Monitoring yang dilakukan dirinci dalam tabel sebagai berikut :",
+    );
+
+    const subjectMaksud = buildLpdSubjectMaksud(participants, 2026);
+    assert.equal(
+      subjectMaksud,
+      "Monitoring dan Evaluasi Peserta TKM Lanjutan tahun Anggaran 2026 di Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah;",
     );
   });
 });

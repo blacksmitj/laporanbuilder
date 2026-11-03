@@ -15,6 +15,7 @@ import type {
   UpdateReportParticipantsSelectionInput,
 } from "@/lib/validations/participant-schema";
 import { getReportType } from "@/report-types/registry";
+import { buildLpdSubjectMaksud } from "@/report-types/lpd-monev-tkm/narrative-rules";
 import {
   type Actor,
   assertReportAccess,
@@ -518,5 +519,50 @@ export async function uploadParticipantDocument(params: {
   });
 
   return doc;
+}
+
+export async function generateReportSubjectMaksud(
+  reportId: string,
+  actor: Actor,
+) {
+  const report = await assertReportAccess(reportId, actor);
+
+  // Fetch selected participants
+  const selectedRows = await db
+    .select({
+      normalizedData: participants.normalizedData,
+    })
+    .from(reportParticipants)
+    .innerJoin(
+      participants,
+      eq(reportParticipants.participantId, participants.id),
+    )
+    .where(eq(reportParticipants.reportId, reportId))
+    .orderBy(asc(reportParticipants.sortOrder));
+
+  // If no selected participants yet, fallback to all participants in report
+  let rows = selectedRows;
+  if (rows.length === 0) {
+    rows = await db
+      .select({
+        normalizedData: participants.normalizedData,
+      })
+      .from(participants)
+      .where(eq(participants.reportId, reportId))
+      .orderBy(asc(participants.rowNumber));
+  }
+
+  const meta = (report.metadata as Record<string, unknown>) || {};
+  const fallbackRegion = typeof meta.region === "string" ? meta.region : null;
+
+  const subject = buildLpdSubjectMaksud(
+    rows.map((r) => ({
+      normalizedData: r.normalizedData as Record<string, unknown>,
+    })),
+    report.fiscalYear,
+    fallbackRegion,
+  );
+
+  return { subject };
 }
 

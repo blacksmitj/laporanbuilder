@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   Save,
+  Sparkles,
   Trash2,
   Users,
 } from "lucide-react";
@@ -144,6 +145,34 @@ export function ReportWorkspaceView({
   const [currentVersion, setCurrentVersion] = useState(report.version);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const generateSubjectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/reports/${report.id}/generate-subject`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? "Gagal menyusun narasi perihal / maksud.");
+      }
+      return json.data as { subject: string };
+    },
+    onSuccess: (data) => {
+      handleMetadataChange("subject", data.subject);
+      toast.add({
+        title: "Perihal Otomatis Dibuat",
+        description: "Maksud perjalanan dinas berhasil disusun berdasarkan data peserta.",
+        type: "success",
+      });
+    },
+    onError: (err: Error) => {
+      toast.add({
+        title: "Gagal membuat perihal",
+        description: err.message,
+        type: "error",
+      });
+    },
+  });
 
   function handleMetadataChange(name: string, value: unknown) {
     setMetadata((prev) => ({ ...prev, [name]: value }));
@@ -477,6 +506,25 @@ export function ReportWorkspaceView({
             values={metadata}
             errors={fieldErrors}
             onChange={handleMetadataChange}
+            fieldActions={{
+              subject: (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => generateSubjectMutation.mutate()}
+                  disabled={generateSubjectMutation.isPending}
+                  className="gap-1 h-6 px-2 text-xs text-primary"
+                >
+                  {generateSubjectMutation.isPending ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3" />
+                  )}
+                  Auto Generate Maksud
+                </Button>
+              ),
+            }}
           />
         </CardContent>
       </Card>
