@@ -45,7 +45,10 @@ export interface ReportDocumentSnapshot {
   participants: Array<{
     sortOrder: number;
     respondentName: string;
+    tkmId?: string | null;
     visitDate: string | null;
+    businessAddress?: string | null;
+    businessDescription?: string | null;
     sector: string | null;
     businessType: string | null;
     mainProduct: string | null;
@@ -295,15 +298,15 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   <div class="section-title">B. RINGKASAN KEGIATAN</div>
   <p>${sectionBIntro}</p>
 
-  <!-- TABEL RINCIAN HASIL KUNJUNGAN PESERTA -->
+  <!-- TABEL RINCIAN HASIL KUNJUNGAN PESERTA (Template Pekalongan 2026) -->
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 35px;">No.</th>
-        <th style="width: 140px;">Nama TKM Lanjutan</th>
-        <th style="width: 90px;">Tanggal Monev</th>
-        <th style="width: 130px;">Sektor Usaha / Produk Utama</th>
-        <th>Hasil Kunjungan</th>
+        <th style="width: 35px;">NO</th>
+        <th style="width: 170px;">NAMA TKML</th>
+        <th style="width: 200px;">ALAMAT USAHA TKM LANJUTAN</th>
+        <th style="width: 170px;">JENIS USAHA DAN NAMA USAHA</th>
+        <th>HASIL MONITORING</th>
       </tr>
     </thead>
     <tbody>
@@ -312,17 +315,23 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
           ? `<tr><td colspan="5" class="text-center" style="padding: 16px;">Tidak ada data peserta yang dipilih.</td></tr>`
           : snapshot.participants
               .map(
-                (p, idx) => `
+                (p, idx) => {
+                  const visitFormatted = p.visitDate ? ` (${formatDateIndo(p.visitDate)})` : "";
+                  const tkmIdLabel = p.tkmId ? ` - ID TKML ${p.tkmId}` : "";
+                  const col1Text = `${p.respondentName}${tkmIdLabel}${visitFormatted}`;
+                  const col2Text = p.businessAddress || "-";
+                  const col3Text = p.businessDescription || p.businessType || p.sector || "-";
+                  const col4Text = p.narrative || "-";
+
+                  return `
         <tr>
           <td class="text-center">${idx + 1}</td>
-          <td><strong>${p.respondentName}</strong></td>
-          <td class="text-center">${formatDateIndo(p.visitDate)}</td>
-          <td>
-            ${p.sector || "-"}<br/>
-            <small style="color: #444;">${p.mainProduct || ""}</small>
-          </td>
-          <td style="text-align: justify;">${p.narrative || "-"}</td>
-        </tr>`,
+          <td><strong>${col1Text}</strong></td>
+          <td>${col2Text}</td>
+          <td>${col3Text}</td>
+          <td style="text-align: justify;">${col4Text}</td>
+        </tr>`;
+                },
               )
               .join("")
       }

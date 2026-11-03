@@ -93,6 +93,7 @@ export default async function TemplatesPage() {
                       <Button
                         size="xs"
                         variant="outline"
+                        nativeButton={false}
                         render={<Link href={`/templates/${tpl.id}`} />}
                       >
                         Konfigurasi &amp; Versi

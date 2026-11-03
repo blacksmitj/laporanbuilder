@@ -299,6 +299,7 @@ export function ReportEditorView({
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href={`/reports/${reportId}`} />}
             >
               <ArrowLeft className="mr-1 size-3.5" />
@@ -343,6 +344,7 @@ export function ReportEditorView({
           </Button>
           <Button
             size="sm"
+            nativeButton={false}
             render={<Link href={`/reports/${reportId}/preview`} />}
           >
             Lanjut ke Preview &amp; PDF

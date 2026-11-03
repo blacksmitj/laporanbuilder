@@ -245,6 +245,7 @@ export function ReportWorkspaceView({
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href="/reports" />}
             >
               <ArrowLeft className="mr-1 size-3.5" />
@@ -295,6 +296,7 @@ export function ReportWorkspaceView({
           </Button>
           <Button
             size="sm"
+            nativeButton={false}
             render={<Link href={`/reports/${report.id}/import`} />}
           >
             Lanjut ke Import Excel

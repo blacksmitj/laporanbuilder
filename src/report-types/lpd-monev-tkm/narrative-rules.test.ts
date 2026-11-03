@@ -1,52 +1,78 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildLpdParticipantRulesNarrative } from "./narrative-rules";
+import {
+  buildLpdBusinessAddress,
+  buildLpdBusinessDescription,
+  buildLpdParticipantRulesNarrative,
+} from "./narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "./row-schema";
 
-describe("LPD Monev TKM Rules Narrative Engine", () => {
-  it("builds correct standard narrative according to PRD §10 example (Amalia)", () => {
-    const amaliaSample: Partial<LpdMonevTkmNormalizedRow> = {
-      respondentName: "Amalia",
-      sector: "Industri Kreatif",
-      businessType: "Desain pakaian dan menjahit pakaian dengan mesin",
-      mainProduct: "Baju, mukena, khimar",
-      currentWorkers: 1,
-      fundReceivedAmount: 15000000,
-      spendingPercentageLabel: "Semua telah dibelanjakan",
-      rabCompliance: "Sesuai",
-      receiptAvailability: "Ada",
+describe("LPD Monev TKM Rules Narrative Engine (Pekalongan 2026 Style)", () => {
+  it("builds concise Pekalongan style narrative with revenue and tools progression", () => {
+    const sampleRow: Partial<LpdMonevTkmNormalizedRow> = {
+      respondentName: "Mukhtar Efendi",
+      tkmId: "1041809",
       fieldBusinessStatus: "Masih berjalan",
-      mentoringStatus: "Sudah dapat",
-      mentorNameAndUniversity: "Yasmin dari Telkim university",
-      mentoringBenefit: "Bersemangat untuk menjalankan usaha",
+      purchasedEquipmentAvailability: "Ada sesuai",
+      rabCompliance: "Sesuai",
+      marketingArea: "antar Kecamatan",
+      monthlyRevenue: 20000000,
+      productionGrowthPercentage: 10,
+      currentWorkers: 2,
     };
 
-    const narrative = buildLpdParticipantRulesNarrative(amaliaSample, 2026);
+    const narrative = buildLpdParticipantRulesNarrative(sampleRow, 2026);
 
-    assert.ok(narrative.includes("Amalia"));
-    assert.ok(narrative.includes("Industri Kreatif"));
-    assert.ok(narrative.includes("Desain pakaian dan menjahit"));
-    assert.ok(narrative.includes("1 orang tenaga kerja"));
-    assert.ok(narrative.includes("Rp"));
-    assert.ok(narrative.includes("15.000.000"));
-    assert.ok(narrative.includes("Yasmin dari Telkim university"));
+    assert.ok(narrative.includes("menguasai usaha dengan baik"));
+    assert.ok(narrative.includes("berkembang dari segi bahan dan alat"));
+    assert.ok(narrative.includes("antar Kecamatan"));
+    assert.ok(narrative.includes("20.000.000"));
+    assert.ok(narrative.includes("10%"));
+    assert.ok(narrative.includes("2 orang tenaga kerja"));
   });
 
-  it("skips missing fields without outputting 0 or null", () => {
-    const emptyWorkerSample: Partial<LpdMonevTkmNormalizedRow> = {
+  it("skips missing fields cleanly without null or 0", () => {
+    const emptySample: Partial<LpdMonevTkmNormalizedRow> = {
       respondentName: "Budi",
-      sector: "Perdagangan",
-      businessType: "Kelontong",
-      currentWorkers: null, // Empty must NOT become "0 orang tenaga kerja"
-      fundReceivedAmount: null,
+      fieldBusinessStatus: "Masih berjalan",
+      currentWorkers: null,
+      monthlyRevenue: null,
     };
 
-    const narrative = buildLpdParticipantRulesNarrative(emptyWorkerSample, 2026);
+    const narrative = buildLpdParticipantRulesNarrative(emptySample, 2026);
 
-    assert.ok(narrative.includes("Budi"));
+    assert.ok(narrative.includes("menguasai usaha dengan baik"));
     assert.ok(!narrative.includes("tenaga kerja"));
-    assert.ok(!narrative.includes("dana bantuan"));
+    assert.ok(!narrative.includes("omset"));
     assert.ok(!narrative.includes("null"));
   });
-});
 
+  it("builds business address properly from location parts", () => {
+    const sample: Partial<LpdMonevTkmNormalizedRow> = {
+      interviewAddress: "Dk. Gondangsari RT. 001 RW. 005",
+      interviewVillage: "Randu",
+      interviewDistrict: "Pecalungan",
+      interviewRegency: "Kab. Batang",
+      interviewProvince: "Jawa Tengah",
+    };
+
+    const address = buildLpdBusinessAddress(sample);
+    assert.equal(
+      address,
+      "Dk. Gondangsari RT. 001 RW. 005, Randu, Pecalungan, Kab. Batang, Jawa Tengah",
+    );
+  });
+
+  it("builds business description properly", () => {
+    const sample: Partial<LpdMonevTkmNormalizedRow> = {
+      businessType: "Jasa Service dan Jual Beli Komputer",
+      mainProduct: "Perbaikan PC dan Laptop",
+    };
+
+    const desc = buildLpdBusinessDescription(sample);
+    assert.equal(
+      desc,
+      "Jasa Service dan Jual Beli Komputer dengan produk Perbaikan PC dan Laptop",
+    );
+  });
+});

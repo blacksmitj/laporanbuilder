@@ -126,6 +126,7 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href="/templates" />}
             >
               <ArrowLeft className="mr-1 size-3.5" />

@@ -217,7 +217,7 @@ export function ReportsListView({
               : "Kelola laporan perjalanan dinas yang Anda buat."}
           </p>
         </div>
-        <Button render={<Link href="/reports/new" />}>
+        <Button nativeButton={false} render={<Link href="/reports/new" />}>
           <FilePlus2 className="mr-1.5 size-4" />
           Buat Laporan Baru
         </Button>
@@ -312,6 +312,7 @@ export function ReportsListView({
                       <Button
                         size="sm"
                         className="mt-2"
+                        nativeButton={false}
                         render={<Link href="/reports/new" />}
                       >
                         <FilePlus2 className="mr-1.5 size-4" />

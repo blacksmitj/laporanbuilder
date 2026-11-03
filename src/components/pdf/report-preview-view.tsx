@@ -104,6 +104,7 @@ export function ReportPreviewView({
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href={`/reports/${reportId}`} />}
             >
               <ArrowLeft className="mr-1 size-3.5" />

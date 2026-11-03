@@ -27,3 +27,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **UI Components via shadcn MCP**:
   - When creating or needing new UI elements, always inspect and leverage the `shadcn` MCP server tools (e.g., `search_items_in_registries`, `view_items_in_registries`, `get_add_command_for_items`) to check available shadcn components before writing custom implementations.
 
+### 4. Base UI Polymorphic Elements (Button with Link)
+- **Base UI `Button` with `render` Prop**:
+  - The `@base-ui/react/button` component sets `nativeButton={true}` by default, expecting a native `<button>` element.
+  - When rendering non-button elements (such as Next.js `<Link />` or `<a>`) via the `render` prop on `Button`, you **must** supply `nativeButton={false}`:
+    ```tsx
+    <Button nativeButton={false} render={<Link href="/path" />}>
+      Click Me
+    </Button>
+    ```
+  - Omitting `nativeButton={false}` triggers a runtime console error (`Base UI: A component that acts as a button expected a native <button> because the nativeButton prop is true...`).
+
+

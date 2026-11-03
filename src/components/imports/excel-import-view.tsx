@@ -324,6 +324,7 @@ export function ExcelImportView({
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href={`/reports/${reportId}`} />}
             >
               <ArrowLeft className="mr-1 size-3.5" />
@@ -343,6 +344,7 @@ export function ExcelImportView({
         {batch?.status === "confirmed" && (
           <Button
             size="sm"
+            nativeButton={false}
             render={<Link href={`/reports/${reportId}/participants`} />}
           >
             Lanjut ke Pilih Peserta

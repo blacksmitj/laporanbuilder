@@ -16,6 +16,10 @@ import { generatePdfBufferFromSnapshot } from "@/lib/pdf/generator";
 import type { ReportDocumentSnapshot } from "@/lib/pdf/render-html";
 import { renderReportDocumentHtml } from "@/lib/pdf/render-html";
 import { putStorageObject, storageKeys } from "@/lib/storage";
+import {
+  buildLpdBusinessAddress,
+  buildLpdBusinessDescription,
+} from "@/report-types/lpd-monev-tkm/narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "@/report-types/lpd-monev-tkm/row-schema";
 import { getReportType } from "@/report-types/registry";
 import type { TemplateConfiguration } from "@/report-types/types";
@@ -107,14 +111,21 @@ export async function buildReportSnapshotPayload(
   }
 
   const participantsList = selectedParticipants.map((p) => {
-    const norm = p.normalizedData as Partial<LpdMonevTkmNormalizedRow>;
+    const norm = (p.normalizedData || {}) as Partial<LpdMonevTkmNormalizedRow>;
     return {
       sortOrder: p.sortOrder,
       respondentName: String(norm.respondentName || "-"),
-      visitDate: p.visitDate || (typeof norm.interviewDate === "string" ? norm.interviewDate : null),
+      tkmId: norm.tkmId ? String(norm.tkmId) : null,
+      visitDate:
+        p.visitDate ||
+        (typeof norm.interviewDate === "string" ? norm.interviewDate : null),
+      businessAddress: buildLpdBusinessAddress(norm),
+      businessDescription: buildLpdBusinessDescription(norm),
       sector: typeof norm.sector === "string" ? norm.sector : null,
-      businessType: typeof norm.businessType === "string" ? norm.businessType : null,
-      mainProduct: typeof norm.mainProduct === "string" ? norm.mainProduct : null,
+      businessType:
+        typeof norm.businessType === "string" ? norm.businessType : null,
+      mainProduct:
+        typeof norm.mainProduct === "string" ? norm.mainProduct : null,
       narrative: p.narrative || p.rulesNarrative || "",
     };
   });

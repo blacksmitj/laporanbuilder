@@ -387,6 +387,7 @@ export function ParticipantsManagementView({
             <Button
               variant="ghost"
               size="xs"
+              nativeButton={false}
               render={<Link href={`/reports/${reportId}`} />}
             >
               <ArrowLeft className="mr-1 size-3.5" />
@@ -419,6 +420,7 @@ export function ParticipantsManagementView({
           <Button
             size="sm"
             variant="outline"
+            nativeButton={false}
             render={<Link href={`/reports/${reportId}/editor`} />}
           >
             Lanjut ke Editor Narasi
