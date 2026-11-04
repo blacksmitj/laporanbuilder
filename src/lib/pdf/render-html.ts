@@ -77,6 +77,14 @@ function escapeHtml(value: string): string {
   });
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    result.push(items.slice(i, i + size));
+  }
+  return result;
+}
+
 function formatDateIndo(dateStr?: string | null): string {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
@@ -144,15 +152,14 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   <meta charset="UTF-8" />
   <title>${snapshot.name}</title>
   <style>
-    /* Halaman 2 dan seterusnya menggunakan margin standar body dokumen */
+    /* Margin utama kertas diatur mengikuti kop surat (kopMarginLeft & kopMarginRight) */
     @page {
       size: ${page.paperSize} ${page.orientation};
       margin-top: ${pageMarginTop}mm;
       margin-bottom: ${page.marginsMm.bottom}mm;
-      margin-left: ${pageMarginLeft}mm;
-      margin-right: ${pageMarginRight}mm;
+      margin-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
+      margin-right: ${header.showKop !== false ? kopMarginRight : pageMarginRight}mm;
     }
-    /* Halaman 1 khusus menggunakan margin kop surat bila kop aktif */
     @page :first {
       margin-top: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
       margin-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
@@ -202,8 +209,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         flex-shrink: 0;
         padding-top: ${pageMarginTop}mm;
         padding-bottom: ${page.marginsMm.bottom}mm;
-        padding-left: ${pageMarginLeft}mm;
-        padding-right: ${pageMarginRight}mm;
+        padding-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
+        padding-right: ${header.showKop !== false ? kopMarginRight : pageMarginRight}mm;
         background: #ffffff;
         box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
         position: relative;
@@ -211,24 +218,18 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       }
       .sheet.first-sheet {
         padding-top: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
-        padding-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
-        padding-right: ${header.showKop !== false ? kopMarginRight : pageMarginRight}mm;
       }
       .sheet-content {
         height: 100%;
         overflow: hidden;
       }
+      /* Pada screen preview, body-wrap mewarisi padding sisa yang sama */
       .sheet-content .body-wrap {
         padding-left: ${kopOffsetLeft}mm;
         padding-right: ${kopOffsetRight}mm;
       }
       .sheet-content .body-wrap.first {
         margin-top: ${kopOffsetTop}mm;
-      }
-      .sheet-content .document-body-content {
-        margin-top: 0;
-        padding-left: 0;
-        padding-right: 0;
       }
       .sheet::before {
         content: "";
@@ -246,9 +247,6 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         );
         border-bottom: 1px dashed rgba(59, 130, 246, 0.35);
         pointer-events: none;
-      }
-      .sheet.first-sheet::before {
-        height: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
       }
       .sheet::after {
         content: "";
@@ -307,9 +305,9 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       padding-bottom: 6px;
       width: 100%;
     }
-    /* Pembungkus isi dokumen selain kop surat agar mengikuti margin dokumen body */
+    /* Di print media, hanya judul dan meta awal halaman 1 yang perlu offset bila kopMargins berbeda */
     .document-body-content {
-      margin-top: ${kopOffsetTop}mm;
+      margin-top: 0;
       padding-left: ${kopOffsetLeft}mm;
       padding-right: ${kopOffsetRight}mm;
     }
@@ -408,8 +406,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 14px;
-      line-height: 1.25;
-      font-size: 11pt;
+      line-height: 1.35;
+      font-size: ${page.fontSizePt || 11}pt;
     }
     .meta-table td {
       padding: 2.5px 2px;
@@ -427,7 +425,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       text-align: justify;
     }
     .section-heading {
-      font-size: 11pt;
+      font-size: ${page.fontSizePt || 11}pt;
       font-weight: bold;
       margin-top: 14px;
       margin-bottom: 6px;
@@ -435,11 +433,11 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     }
     p {
       text-align: justify;
-      text-indent: 10mm;
+      text-indent: 0;
       margin-top: 0;
       margin-bottom: 8px;
-      line-height: 1.5;
-      font-size: 11pt;
+      line-height: ${page.lineHeight || 1.5};
+      font-size: ${page.fontSizePt || 11}pt;
     }
     .ordered-clause {
       display: flex;
@@ -447,8 +445,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       text-align: justify;
       margin-top: 0;
       margin-bottom: 8px;
-      line-height: 1.5;
-      font-size: 11pt;
+      line-height: ${page.lineHeight || 1.5};
+      font-size: ${page.fontSizePt || 11}pt;
     }
     .ordered-clause-num {
       width: 24px;
@@ -492,7 +490,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       margin-top: 18px;
       page-break-inside: avoid;
       width: 100%;
-      font-size: 11pt;
+      font-size: ${page.fontSizePt || 11}pt;
       line-height: 1.25;
     }
     .signature-date {
@@ -524,62 +522,67 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     .photo-appendix {
       break-before: page;
       page-break-before: always;
-      margin-top: 0;
+      margin-top: 24px;
     }
     .photo-appendix-title {
       text-align: center;
-      font-size: 14pt;
-      font-weight: 700;
-      margin: 0 0 18px;
+      font-size: 12pt;
+      font-weight: bold;
+      margin: 0 0 16px;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .participant-photo-group {
-      margin: 0 0 18px;
-      break-inside: avoid;
-      page-break-inside: avoid;
+      margin: 0 0 16px;
     }
     .participant-photo-heading {
       font-size: 11pt;
-      font-weight: 700;
-      margin: 0 0 8px;
+      font-weight: bold;
+      margin: 14px 0 8px;
+      page-break-after: avoid;
+      break-after: avoid;
     }
-    .participant-photo-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .participant-photo {
-      margin: 0;
-      break-inside: avoid;
-      page-break-inside: avoid;
-      text-align: center;
-    }
-    .participant-photo img {
-      display: block;
+    .photo-table {
       width: 100%;
-      height: 90mm;
-      object-fit: contain;
+      table-layout: fixed;
+      border-collapse: collapse;
+      margin-bottom: 12px;
     }
-    .participant-photo figcaption {
-      margin-top: 3px;
-      font-size: 8pt;
-      overflow-wrap: anywhere;
+    .photo-table tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .photo-table td {
+      width: 50%;
+      border: 1px solid #cbd5e1;
+      padding: 8px;
+      text-align: center;
+      vertical-align: middle;
+      background: #ffffff;
+    }
+    .photo-table img {
+      display: block;
+      max-width: 100%;
+      height: 78mm;
+      object-fit: contain;
+      margin: 0 auto;
     }
     .photo-fetch-error {
-      height: 90mm;
-      border: 1px dashed #9ca3af;
+      height: 78mm;
+      border: 1px dashed #f87171;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       gap: 6px;
-      color: #7f1d1d;
+      color: #991b1b;
       background: #fef2f2;
       text-align: center;
       padding: 8px;
+      font-size: 9pt;
+      box-sizing: border-box;
     }
-delta_fingerprint: 4:118
-file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
+    @media screen {
       .photo-appendix { margin-top: 0; }
     }
     @media print {
@@ -696,11 +699,11 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 5%;">NO</th>
+        <th style="width: 7%;">NO</th>
         <th style="width: 17%;">NAMA TKML</th>
         <th style="width: 22%;">ALAMAT USAHA TKM LANJUTAN</th>
         <th style="width: 18%;">JENIS USAHA DAN NAMA USAHA</th>
-        <th style="width: 38%;">HASIL MONITORING</th>
+        <th style="width: 36%;">HASIL MONITORING</th>
       </tr>
     </thead>
     <tbody>
@@ -761,7 +764,6 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
     </table>
   </div>
 
-  </div> <!-- /.document-body-content -->
   ${
     snapshot.participants.some((participant) => participant.photos?.length)
       ? `<section class="photo-appendix">
@@ -769,28 +771,44 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
           ${snapshot.participants
             .filter((participant) => participant.photos?.length)
             .map(
-              (participant, participantIndex) => `
+              (participant, participantIndex) => {
+                const photoRows = chunkArray(participant.photos || [], 2);
+                return `
                 <section class="participant-photo-group">
-                  <h2 class="participant-photo-heading">Peserta ${participantIndex + 1}: ${escapeHtml(participant.respondentName)}</h2>
-                  <div class="participant-photo-grid">
-                    ${participant.photos
-                      ?.map(
-                        (photo, photoIndex) => `
-                          <figure class="participant-photo">
-                            ${photo.dataUrl
-                              ? `<img src="${photo.dataUrl}" alt="${escapeHtml(photo.label || `Foto ${participantIndex + 1}.${photoIndex + 1}`)}" />`
-                              : `<div class="photo-fetch-error">Gambar tidak bisa diambil<br/><strong>${escapeHtml(photo.label || photo.filename)}</strong></div>`}
-                            <figcaption>${escapeHtml(photo.label || photo.filename)}</figcaption>
-                          </figure>`,
-                      )
-                      .join("")}
-                  </div>
-                </section>`,
+                  <h2 class="participant-photo-heading">${participantIndex + 1}. ${escapeHtml(participant.respondentName)}</h2>
+                  <table class="photo-table">
+                    <tbody>
+                      ${photoRows
+                        .map(
+                          (row) => `
+                        <tr>
+                          ${row
+                            .map(
+                              (photo, photoIndex) => `
+                            <td>
+                              ${
+                                photo.dataUrl
+                                  ? `<img src="${photo.dataUrl}" alt="Foto Dokumentasi" />`
+                                  : `<div class="photo-fetch-error">Gambar tidak bisa diambil</div>`
+                              }
+                            </td>`,
+                            )
+                            .join("")}
+                          ${row.length === 1 ? `<td></td>` : ""}
+                        </tr>`,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </section>`;
+              },
             )
             .join("")}
         </section>`
       : ""
   }
+
+  </div> <!-- /.document-body-content -->
   </div> <!-- /.page-container -->
   <script>
   (function () {
@@ -800,6 +818,11 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
     var pages = document.createElement("div");
     pages.id = "pages";
     document.body.appendChild(pages);
+
+    var photoAppendix = src.querySelector(".photo-appendix");
+    if (photoAppendix) {
+      photoAppendix.parentNode.removeChild(photoAppendix);
+    }
 
     var units = [];
     var header = src.querySelector(".header-box");
@@ -813,12 +836,23 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
         units.push({ node: el });
       }
     });
-    var photoAppendix = src.querySelector(".photo-appendix");
+
     if (photoAppendix) {
       Array.prototype.slice.call(photoAppendix.children).forEach(function (el) {
-        units.push({ node: el, appendixStart: el.classList.contains("photo-appendix-title") });
+        if (el.classList.contains("participant-photo-group")) {
+          Array.prototype.slice.call(el.children).forEach(function (child) {
+            if (child.classList.contains("photo-table")) {
+              child.querySelectorAll("tbody tr").forEach(function (tr) {
+                units.push({ table: child, node: tr });
+              });
+            } else {
+              units.push({ node: child });
+            }
+          });
+        } else {
+          units.push({ node: el, appendixStart: el.classList.contains("photo-appendix-title") });
+        }
       });
-      photoAppendix.parentNode.removeChild(photoAppendix);
     }
 
     var content, wrap, curTable, curTableSrc, pageIndex = -1;

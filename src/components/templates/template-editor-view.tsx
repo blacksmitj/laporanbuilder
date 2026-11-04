@@ -942,23 +942,60 @@ export function TemplateEditorView({ template }: TemplateDetailProps) {
                     </Field>
 
                     <Field>
-                      <FieldLabel>Jarak Spasi (Line Height)</FieldLabel>
-                      <Input
-                        type="number"
-                        step={0.1}
-                        min={1}
-                        max={2.5}
-                        value={config.page.lineHeight}
-                        onChange={(e) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            page: {
-                              ...prev.page,
-                              lineHeight: Number(e.target.value),
-                            },
-                          }))
-                        }
-                      />
+                      <div className="flex items-center justify-between">
+                        <FieldLabel>Jarak Spasi (Line Height)</FieldLabel>
+                        <span className="text-xs font-mono font-medium text-muted-foreground">
+                          {config.page.lineHeight ?? 1.5}x
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step={0.05}
+                          min={1}
+                          max={2.5}
+                          value={config.page.lineHeight}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              page: {
+                                ...prev.page,
+                                lineHeight: Number(e.target.value) || 1.5,
+                              },
+                            }))
+                          }
+                          className="w-24 shrink-0"
+                        />
+                        <div className="flex items-center gap-1 overflow-x-auto">
+                          {[1.0, 1.15, 1.25, 1.3, 1.5, 2.0].map((preset) => (
+                            <Button
+                              key={preset}
+                              type="button"
+                              size="xs"
+                              variant={
+                                Math.abs((config.page.lineHeight ?? 1.5) - preset) < 0.01
+                                  ? "default"
+                                  : "outline"
+                              }
+                              className="h-8 px-2 text-xs"
+                              onClick={() =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  page: {
+                                    ...prev.page,
+                                    lineHeight: preset,
+                                  },
+                                }))
+                              }
+                            >
+                              {preset}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Pilih preset cepat standar (1.0, 1.15, 1.25, 1.3, 1.5, 2.0) atau masukkan angka custom.
+                      </p>
                     </Field>
 
                     <Field>

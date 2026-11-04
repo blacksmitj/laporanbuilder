@@ -710,6 +710,64 @@ export function PreviewTemplatePanel({
                 </Field>
               </div>
 
+              {/* Jarak Spasi Baris (Line Height) */}
+              <div className="space-y-2 rounded-lg border p-3 bg-muted/10">
+                <div className="flex items-center justify-between">
+                  <FieldLabel className="text-xs font-semibold">Jarak Spasi Baris (Line Height)</FieldLabel>
+                  <span className="text-xs font-mono font-medium text-muted-foreground">
+                    {config.page.lineHeight ?? 1.5}x
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step={0.05}
+                    min={1}
+                    max={2.5}
+                    value={config.page.lineHeight ?? 1.5}
+                    onChange={(e) =>
+                      onChange({
+                        ...config,
+                        page: {
+                          ...config.page,
+                          lineHeight: Number(e.target.value) || 1.5,
+                        },
+                      })
+                    }
+                    className="w-24 shrink-0"
+                  />
+                  <div className="flex items-center gap-1 overflow-x-auto">
+                    {[1.0, 1.15, 1.25, 1.3, 1.5, 2.0].map((preset) => (
+                      <Button
+                        key={preset}
+                        type="button"
+                        size="xs"
+                        variant={
+                          Math.abs((config.page.lineHeight ?? 1.5) - preset) < 0.01
+                            ? "default"
+                            : "outline"
+                        }
+                        className="h-8 px-2 text-xs"
+                        onClick={() =>
+                          onChange({
+                            ...config,
+                            page: {
+                              ...config.page,
+                              lineHeight: preset,
+                            },
+                          })
+                        }
+                      >
+                        {preset}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Pilih preset cepat standar (1.0, 1.15, 1.25, 1.3, 1.5, 2.0) atau masukkan angka custom.
+                </p>
+              </div>
+
               {/* Margin Halaman */}
               <div className="space-y-2 rounded-lg border p-3 bg-muted/10">
                 <FieldLabel className="text-xs font-semibold">Margin Halaman Cetak (mm)</FieldLabel>
