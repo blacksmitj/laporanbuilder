@@ -50,6 +50,13 @@ export async function generatePdfBufferFromSnapshot(
     await page.setContent(htmlContent, {
       waitUntil: "networkidle",
     });
+    await page.evaluate(async () => {
+      await Promise.all(
+        Array.from(document.images).map((image) =>
+          image.decode().catch(() => undefined),
+        ),
+      );
+    });
 
     // Playwright margin set to 0 because @page and CSS manage exact margins
     // allowing the letterhead (kop surat) to expand wider without clipping

@@ -55,7 +55,26 @@ export interface ReportDocumentSnapshot {
     businessType: string | null;
     mainProduct: string | null;
     narrative: string;
+    photos?: Array<{
+      dataUrl?: string;
+      filename: string;
+      label?: string;
+      unavailable?: boolean;
+    }>;
   }>;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
 }
 
 function formatDateIndo(dateStr?: string | null): string {
@@ -499,6 +518,71 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       width: 46%;
       letter-spacing: 1px;
     }
+    .photo-appendix {
+      break-before: page;
+      page-break-before: always;
+      margin-top: 0;
+    }
+    .photo-appendix-title {
+      text-align: center;
+      font-size: 14pt;
+      font-weight: 700;
+      margin: 0 0 18px;
+      text-transform: uppercase;
+    }
+    .participant-photo-group {
+      margin: 0 0 18px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .participant-photo-heading {
+      font-size: 11pt;
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    .participant-photo-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .participant-photo {
+      margin: 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      text-align: center;
+    }
+    .participant-photo img {
+      display: block;
+      width: 100%;
+      height: 90mm;
+      object-fit: contain;
+    }
+    .participant-photo figcaption {
+      margin-top: 3px;
+      font-size: 8pt;
+      overflow-wrap: anywhere;
+    }
+    .photo-fetch-error {
+      height: 90mm;
+      border: 1px dashed #9ca3af;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      color: #7f1d1d;
+      background: #fef2f2;
+      text-align: center;
+      padding: 8px;
+    }
+delta_fingerprint: 4:118
+file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
+      .photo-appendix { margin-top: 0; }
+    }
+    @media print {
+      .photo-appendix { display: block; }
+    }
+
   </style>
 </head>
 <body>
@@ -675,6 +759,36 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   </div>
 
   </div> <!-- /.document-body-content -->
+  ${
+    snapshot.participants.some((participant) => participant.photos?.length)
+      ? `<section class="photo-appendix">
+          <h1 class="photo-appendix-title">Lampiran Foto Kegiatan</h1>
+          ${snapshot.participants
+            .filter((participant) => participant.photos?.length)
+            .map(
+              (participant, participantIndex) => `
+                <section class="participant-photo-group">
+                  <h2 class="participant-photo-heading">Peserta ${participantIndex + 1}: ${escapeHtml(participant.respondentName)}</h2>
+                  <div class="participant-photo-grid">
+                    ${participant.photos
+                      ?.map(
+                        (photo, photoIndex) => `
+                          <figure class="participant-photo">
+                            ${photo.dataUrl
+                              ? `<img src="${photo.dataUrl}" alt="${escapeHtml(photo.label || `Foto ${participantIndex + 1}.${photoIndex + 1}`)}" />`
+                              : `<div class="photo-fetch-error">Gambar tidak bisa diambil<br/><strong>${escapeHtml(photo.label || photo.filename)}</strong></div>`}
+                            <figcaption>${escapeHtml(photo.label || photo.filename)}</figcaption>
+                          </figure>`,
+                      )
+                      .join("")}
+                  </div>
+                </section>`,
+            )
+            .join("")}
+        </section>`
+      : ""}
+      : ""
+  }
   </div> <!-- /.page-container -->
   <script>
   (function () {
@@ -697,6 +811,13 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         units.push({ node: el });
       }
     });
+    var photoAppendix = src.querySelector(".photo-appendix");
+    if (photoAppendix) {
+      Array.prototype.slice.call(photoAppendix.children).forEach(function (el) {
+        units.push({ node: el, appendixStart: el.classList.contains("photo-appendix-title") });
+      });
+      photoAppendix.parentNode.removeChild(photoAppendix);
+    }
 
     var content, wrap, curTable, curTableSrc, pageIndex = -1;
     var allSheets = [];
@@ -725,6 +846,9 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       return content.scrollHeight > content.clientHeight + 1;
     }
     function place(u) {
+      if (u.appendixStart && pageIndex > 0 && content.children.length > 0) {
+        newPage();
+      }
       if (u.kop) {
         content.appendChild(u.node);
         return;

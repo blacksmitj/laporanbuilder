@@ -37,6 +37,10 @@ export interface ParticipantListItem {
   visitDate: string | null;
   narrative: string | null;
   documentCount: number;
+  businessPhoto: { documentId: string; mimeType: string; filename: string } | null;
+  activityPhoto: { documentId: string; mimeType: string; filename: string } | null;
+  businessPhotoUrl: string | null;
+  activityPhotoUrl: string | null;
 }
 
 export interface ListParticipantsOptions {
@@ -59,7 +63,7 @@ export async function listParticipants(
 }> {
   await assertReportAccess(reportId, actor);
 
-  const [allParticipants, selectedList, documents] = await Promise.all([
+  const [allParticipants, selectedList] = await Promise.all([
     db
       .select()
       .from(participants)
@@ -70,11 +74,6 @@ export async function listParticipants(
       .from(reportParticipants)
       .where(eq(reportParticipants.reportId, reportId))
       .orderBy(asc(reportParticipants.sortOrder)),
-    db
-      .select({
-        participantId: participantDocuments.participantId,
-      })
-      .from(participantDocuments),
   ]);
 
   const selectedMap = new Map<
@@ -89,13 +88,57 @@ export async function listParticipants(
     });
   }
 
+  const documentRows = allParticipants.length
+    ? await db
+        .select({
+          id: participantDocuments.id,
+          participantId: participantDocuments.participantId,
+          documentType: participantDocuments.documentType,
+          originalFilename: participantDocuments.originalFilename,
+          mimeType: participantDocuments.mimeType,
+          createdAt: participantDocuments.createdAt,
+        })
+        .from(participantDocuments)
+        .where(inArray(participantDocuments.participantId, allParticipants.map((p) => p.id)))
+        .orderBy(asc(participantDocuments.createdAt), asc(participantDocuments.id))
+    : [];
+
   const docCountMap = new Map<string, number>();
-  for (const doc of documents) {
+  const photoMap = new Map<
+    string,
+    {
+      business: ParticipantListItem["businessPhoto"];
+      activity: ParticipantListItem["activityPhoto"];
+    }
+  >();
+  for (const doc of documentRows) {
     docCountMap.set(
       doc.participantId,
       (docCountMap.get(doc.participantId) ?? 0) + 1,
     );
+    if (doc.documentType !== "business" && doc.documentType !== "activity") {
+      continue;
+    }
+    const current = photoMap.get(doc.participantId) ?? {
+      business: null,
+      activity: null,
+    };
+    if (["image/jpeg", "image/png", "image/webp"].includes(doc.mimeType)) {
+      current[doc.documentType] = {
+        documentId: doc.id,
+        mimeType: doc.mimeType,
+        filename: doc.originalFilename,
+      };
+    }
+    photoMap.set(doc.participantId, current);
   }
+
+  const getPhotoUrl = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  for (const [participantId, photos] of photoMap) {
+    photoMap.set(participantId, photos);
+  }
+
 
   const teamSet = new Set<string>();
   const regencySet = new Set<string>();
@@ -163,6 +206,10 @@ export async function listParticipants(
       visitDate: sel ? sel.visitDate : null,
       narrative: sel ? sel.narrative : null,
       documentCount: docCountMap.get(p.id) ?? 0,
+      businessPhoto: photoMap.get(p.id)?.business ?? null,
+      activityPhoto: photoMap.get(p.id)?.activity ?? null,
+      businessPhotoUrl: getPhotoUrl(p.normalizedData.docBusinessPlaceUrl),
+      activityPhotoUrl: getPhotoUrl(p.normalizedData.docActivityUrl),
     };
   });
 
@@ -230,6 +277,59 @@ export async function getParticipantDetail(
     selection: selection[0] ?? null,
     documents: docs,
   };
+}
+
+export async function updateParticipantPhotoLink(params: {
+  reportId: string;
+  participantId: string;
+  photoKind: "business" | "activity";
+  url: string;
+  actor: Actor;
+}) {
+  const { reportId, participantId, photoKind, url, actor } = params;
+  await assertReportAccess(reportId, actor);
+
+  const [participant] = await db
+    .select()
+    .from(participants)
+    .where(and(eq(participants.id, participantId), eq(participants.reportId, reportId)))
+    .limit(1);
+  if (!participant) throw new HttpError(404, "Peserta tidak ditemukan.");
+
+  let normalizedUrl = "";
+  if (url.trim()) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url.trim());
+    } catch {
+      throw new HttpError(400, "Tautan foto tidak valid.");
+    }
+    if (
+      !["http:", "https:"].includes(parsedUrl.protocol) ||
+      !(parsedUrl.hostname === "drive.google.com" || parsedUrl.hostname === "drive.usercontent.google.com")
+    ) {
+      throw new HttpError(400, "Masukkan tautan berbagi Google Drive yang valid.");
+    }
+    normalizedUrl = parsedUrl.toString();
+  }
+
+  const normalizedData = {
+    ...participant.normalizedData,
+    [photoKind === "business" ? "docBusinessPlaceUrl" : "docActivityUrl"]: normalizedUrl || null,
+  };
+  const [updated] = await db
+    .update(participants)
+    .set({ normalizedData, updatedAt: new Date() })
+    .where(and(eq(participants.id, participantId), eq(participants.reportId, reportId)))
+    .returning();
+
+  await recordAuditLog({
+    userId: actor.id,
+    reportId,
+    action: "participant.photo_link.updated",
+    metadata: { participantId, photoKind },
+  });
+  return updated;
 }
 
 export async function updateParticipantData(

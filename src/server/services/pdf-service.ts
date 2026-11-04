@@ -1,7 +1,9 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { getStorageObjectBuffer } from "@/lib/storage";
 import {
   officials,
+  participantDocuments,
   participants,
   reportContents,
   reportOfficials,
@@ -66,11 +68,13 @@ export async function buildReportSnapshotPayload(
       .where(eq(reportContents.reportId, reportId)),
     db
       .select({
+        participantId: reportParticipants.participantId,
         sortOrder: reportParticipants.sortOrder,
         visitDate: reportParticipants.visitDate,
         rulesNarrative: reportParticipants.rulesNarrative,
         narrative: reportParticipants.narrative,
         normalizedData: participants.normalizedData,
+        rawData: participants.rawData,
       })
       .from(reportParticipants)
       .innerJoin(
@@ -144,7 +148,140 @@ export async function buildReportSnapshotPayload(
     }
   }
 
-  const participantsList = selectedParticipants.map((p) => {
+  const fetchRemoteParticipantImage = async (urlValue: unknown) => {
+    if (typeof urlValue !== "string" || !urlValue.trim()) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(urlValue.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return { unavailable: true as const };
+      }
+
+      let fileId: string | null = null;
+      if (
+        parsed.hostname === "drive.google.com" ||
+        parsed.hostname === "drive.usercontent.google.com" ||
+        parsed.hostname.endsWith(".googleusercontent.com")
+      ) {
+        fileId =
+          parsed.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] ??
+          parsed.searchParams.get("id") ??
+          null;
+      }
+
+      const candidateUrls: string[] = [];
+      if (fileId && /^[a-zA-Z0-9_-]+$/.test(fileId)) {
+        candidateUrls.push(`https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`);
+        candidateUrls.push(`https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600`);
+        candidateUrls.push(`https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download`);
+      } else {
+        return { unavailable: true as const };
+      }
+
+      for (const targetUrl of candidateUrls) {
+        try {
+          const response = await fetch(targetUrl, {
+            signal: AbortSignal.timeout(8000),
+            redirect: "follow",
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            },
+          });
+          if (!response.ok) continue;
+
+          const mimeType = (response.headers.get("content-type") ?? "")
+            .split(";")[0]
+            .trim()
+            .toLowerCase();
+          if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+            continue;
+          }
+
+          const contentLength = Number(response.headers.get("content-length") ?? 0);
+          if (contentLength > 10 * 1024 * 1024) {
+            continue;
+          }
+
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (bytes.length === 0 || bytes.length > 10 * 1024 * 1024) {
+            continue;
+          }
+
+          return {
+            dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
+          };
+        } catch {
+          continue;
+        }
+      }
+
+      return { unavailable: true as const };
+    } catch {
+      return { unavailable: true as const };
+    }
+  };
+
+  const photoForUrl = async (url: unknown, label: string) => {
+    if (typeof url !== "string" || !url.trim()) return [];
+    return [
+      {
+        label,
+        filename: label,
+        ...(await fetchRemoteParticipantImage(url)),
+      },
+    ];
+  };
+
+  const selectedParticipantIds = selectedParticipants.map((p) => p.participantId);
+  const participantPhotoRows = selectedParticipantIds.length
+    ? await db
+        .select({
+          participantId: participantDocuments.participantId,
+          filename: participantDocuments.originalFilename,
+          storageKey: participantDocuments.storageKey,
+          mimeType: participantDocuments.mimeType,
+          createdAt: participantDocuments.createdAt,
+        })
+        .from(participantDocuments)
+        .where(inArray(participantDocuments.participantId, selectedParticipantIds))
+        .orderBy(asc(participantDocuments.createdAt), asc(participantDocuments.id))
+    : [];
+
+  const photosByParticipant = new Map<
+    string,
+    Array<{ dataUrl: string; filename: string }>
+  >();
+  const loadedPhotos = await Promise.all(
+    participantPhotoRows
+      .filter((photo) => ["image/jpeg", "image/png", "image/webp"].includes(photo.mimeType))
+      .map(async (photo) => {
+        try {
+          const buffer = await getStorageObjectBuffer(photo.storageKey);
+          return {
+            participantId: photo.participantId,
+            photo: {
+              dataUrl: `data:${photo.mimeType};base64,${buffer.toString("base64")}`,
+              filename: photo.filename,
+            },
+          };
+        } catch (error) {
+          console.warn("[pdf] Foto peserta tidak dapat dimuat:", photo.storageKey, error);
+          return null;
+        }
+      }),
+  );
+  for (const loaded of loadedPhotos) {
+    if (!loaded) continue;
+    const photos = photosByParticipant.get(loaded.participantId) ?? [];
+    photos.push(loaded.photo);
+    photosByParticipant.set(loaded.participantId, photos);
+  }
+
+  const participantsList = await Promise.all(selectedParticipants.map(async (p) => {
     const norm = (p.normalizedData || {}) as Partial<LpdMonevTkmNormalizedRow>;
     const businessDesc =
       buildLpdBusinessDescription(norm) ||
@@ -170,8 +307,19 @@ export async function buildReportSnapshotPayload(
       businessType: norm.businessType || null,
       mainProduct: norm.mainProduct || null,
       narrative: p.narrative || p.rulesNarrative || "",
+      photos: [
+        ...(await photoForUrl(
+          norm.docBusinessPlaceUrl ?? p.rawData.docBusinessPlaceUrl,
+          "Foto Tempat Usaha",
+        )),
+        ...(await photoForUrl(
+          norm.docActivityUrl ?? p.rawData.docActivityUrl,
+          "Foto Kegiatan",
+        )),
+        ...(photosByParticipant.get(p.participantId) ?? []),
+      ],
     };
-  });
+  }));
 
   return {
     reportId: report.id,

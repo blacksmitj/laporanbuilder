@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowLeft,
@@ -48,7 +48,15 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PhotoImagePreview } from "@/components/participants/photo-image-preview";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -146,7 +154,6 @@ export function ParticipantsManagementView({
   pdfCount,
 }: ParticipantsManagementViewProps) {
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [selectedTeam, setSelectedTeam] = useState("all");
@@ -184,6 +191,18 @@ export function ParticipantsManagementView({
     useState<ParticipantListItem | null>(null);
   const [docType, setDocType] = useState<string>("activity");
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [photoInputMode, setPhotoInputMode] = useState<"file" | "link">("file");
+  const [photoLink, setPhotoLink] = useState("");
+  const [photoKind, setPhotoKind] = useState<"business" | "activity">("activity");
+
+  function openPhotoDialog(participant: ParticipantListItem, kind: "business" | "activity") {
+    setUploadDocParticipant(participant);
+    setPhotoKind(kind);
+    setDocType(kind);
+    setDocFile(null);
+    setPhotoLink("");
+    setPhotoInputMode("file");
+  }
 
   // Filter local items
   const filteredParticipants = initialParticipants.filter((p) => {
@@ -332,6 +351,34 @@ export function ParticipantsManagementView({
         description: err.message,
         type: "error",
       });
+    },
+  });
+
+  const photoLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!uploadDocParticipant || !photoLink.trim()) {
+        throw new Error("Masukkan tautan Google Drive publik terlebih dahulu.");
+      }
+      const response = await fetch(
+        `/api/reports/${reportId}/participants/${uploadDocParticipant.id}/photo-link`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photoKind, url: photoLink.trim() }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Gagal menyimpan tautan foto.");
+      return result.data;
+    },
+    onSuccess: () => {
+      toast.add({ title: "Tautan foto disimpan", type: "success" });
+      setUploadDocParticipant(null);
+      setPhotoLink("");
+      router.refresh();
+    },
+    onError: (error: Error) => {
+      toast.add({ title: "Gagal menyimpan tautan", description: error.message, type: "error" });
     },
   });
 
@@ -775,20 +822,55 @@ export function ParticipantsManagementView({
                           </TableCell>
 
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => {
-                                setUploadDocParticipant(p);
-                                setDocFile(null);
-                              }}
-                              className="h-7 text-xs"
-                            >
-                              <Upload className="mr-1 size-3" />
-                              {p.documentCount > 0
-                                ? `${p.documentCount} Foto`
-                                : "Upload"}
-                            </Button>
+                            <div className="flex min-w-36 flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  onClick={() => openPhotoDialog(p, "business")}
+                                  className="h-7 justify-start text-xs"
+                                >
+                                  <Upload className="mr-1 size-3" /> Tempat Usaha
+                                </Button>
+                                <Badge variant={p.businessPhoto || p.businessPhotoUrl ? "secondary" : "outline"}>
+                                  {p.businessPhoto || p.businessPhotoUrl ? "Foto ada" : "Belum ada"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  onClick={() => openPhotoDialog(p, "activity")}
+                                  className="h-7 justify-start text-xs"
+                                >
+                                  <Upload className="mr-1 size-3" /> Kegiatan
+                                </Button>
+                                <Badge variant={p.activityPhoto || p.activityPhotoUrl ? "secondary" : "outline"}>
+                                  {p.activityPhoto || p.activityPhotoUrl ? "Foto ada" : "Belum ada"}
+                                </Badge>
+                              </div>
+                              {(p.businessPhoto || p.businessPhotoUrl) && (
+                                <PhotoImagePreview
+                                  src={p.businessPhoto
+                                    ? `/api/reports/${reportId}/participants/${p.id}/documents/${p.businessPhoto.documentId}/preview`
+                                    : p.businessPhotoUrl}
+                                  alt="Foto tempat usaha"
+                                  className="h-16 w-full rounded border object-cover"
+                                />
+                              )}
+                              {(p.activityPhoto || p.activityPhotoUrl) && (
+                                <PhotoImagePreview
+                                  src={p.activityPhoto
+                                    ? `/api/reports/${reportId}/participants/${p.id}/documents/${p.activityPhoto.documentId}/preview`
+                                    : p.activityPhotoUrl}
+                                  alt="Foto kegiatan"
+                                  className="h-16 w-full rounded border object-cover"
+                                />
+                              )}
+                              {p.documentCount > 0 && (
+                                <span className="text-[10px] text-muted-foreground">{p.documentCount} file dokumentasi</span>
+                              )}
+                            </div>
                           </TableCell>
 
                           <TableCell className="text-right">
@@ -1151,7 +1233,7 @@ export function ParticipantsManagementView({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Unggah Dokumentasi Peserta</DialogTitle>
+            <DialogTitle>Dokumentasi Peserta</DialogTitle>
             <DialogDescription>
               Kaitkan foto tempat usaha, kegiatan, atau produk untuk peserta{" "}
               <span className="font-semibold text-foreground">
@@ -1163,34 +1245,85 @@ export function ParticipantsManagementView({
 
           <div className="space-y-4">
             <Field>
-              <FieldLabel>Jenis Dokumentasi</FieldLabel>
-              <NativeSelect
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
+              <FieldLabel>Foto</FieldLabel>
+              <Select
+                value={photoInputMode || "file"}
+                onValueChange={(value) => {
+                  if (value === "file" || value === "link") {
+                    setPhotoInputMode(value);
+                    setDocFile(null);
+                    setPhotoLink("");
+                  }
+                }}
               >
-                <NativeSelectOption value="activity">
-                  Kegiatan Usaha
-                </NativeSelectOption>
-                <NativeSelectOption value="business">
-                  Tempat Usaha
-                </NativeSelectOption>
-                <NativeSelectOption value="product">
-                  Produk Usaha
-                </NativeSelectOption>
-                <NativeSelectOption value="signature">
-                  Tanda Tangan
-                </NativeSelectOption>
-              </NativeSelect>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Pilih metode input foto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="file">Upload file foto</SelectItem>
+                  <SelectItem value="link">Tautan Google Drive publik</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
 
-            <Field>
-              <FieldLabel>Pilih File Foto (JPG/PNG)</FieldLabel>
-              <Input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => setDocFile(e.target.files?.[0] || null)}
-              />
-            </Field>
+            {photoInputMode === "file" ? (
+              <Field>
+                <FieldLabel>Pilih Foto (JPG/PNG/WebP)</FieldLabel>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
+                  onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                />
+              </Field>
+            ) : (
+              <Field>
+                <FieldLabel>Link Google Drive publik</FieldLabel>
+                <Input
+                  type="url"
+                  value={photoLink ?? ""}
+                  onChange={(e) => setPhotoLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/.../view"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pastikan akses Drive diatur ke “Siapa saja yang memiliki link”.
+                </p>
+              </Field>
+            )}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Kategori: {photoKind === "business" ? "Tempat Usaha" : "Kegiatan"}
+              </p>
+              {photoInputMode === "file" ? (
+                docFile ? (
+                  <PhotoImagePreview
+                    file={docFile}
+                    alt="Pratinjau foto yang dipilih"
+                    className="max-h-56 w-full rounded-md border object-contain"
+                  />
+                ) : (
+                  <PhotoImagePreview
+                    src={photoKind === "business"
+                      ? uploadDocParticipant?.businessPhoto
+                        ? `/api/reports/${reportId}/participants/${uploadDocParticipant.id}/documents/${uploadDocParticipant.businessPhoto.documentId}/preview`
+                        : uploadDocParticipant?.businessPhotoUrl
+                      : uploadDocParticipant?.activityPhoto
+                        ? `/api/reports/${reportId}/participants/${uploadDocParticipant.id}/documents/${uploadDocParticipant.activityPhoto.documentId}/preview`
+                        : uploadDocParticipant?.activityPhotoUrl}
+                    alt="Foto tersimpan"
+                    className="max-h-56 w-full rounded-md border object-contain"
+                  />
+                )
+              ) : (
+                <PhotoImagePreview
+                  src={photoLink.trim() ? photoLink.trim() : photoKind === "business"
+                    ? uploadDocParticipant?.businessPhotoUrl
+                    : uploadDocParticipant?.activityPhotoUrl}
+                  alt="Pratinjau foto dari tautan"
+                  className="max-h-56 w-full rounded-md border object-contain"
+                />
+              )}
+            </div>
           </div>
 
           <DialogFooter>
@@ -1203,13 +1336,17 @@ export function ParticipantsManagementView({
             </Button>
             <Button
               type="button"
-              disabled={uploadDocMutation.isPending || !docFile}
-              onClick={() => uploadDocMutation.mutate()}
+              disabled={photoInputMode === "file"
+                ? uploadDocMutation.isPending || !docFile
+                : photoLinkMutation.isPending || !photoLink.trim()}
+              onClick={() => photoInputMode === "file"
+                ? uploadDocMutation.mutate()
+                : photoLinkMutation.mutate()}
             >
-              {uploadDocMutation.isPending && (
+              {(uploadDocMutation.isPending || photoLinkMutation.isPending) && (
                 <Loader2 className="mr-1.5 size-4 animate-spin" />
               )}
-              Unggah Foto
+              {photoInputMode === "file" ? "Unggah Foto" : "Simpan Link"}
             </Button>
           </DialogFooter>
         </DialogContent>
