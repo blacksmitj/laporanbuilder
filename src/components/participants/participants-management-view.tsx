@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ReportWizardStepper } from "@/components/reports/report-wizard-stepper";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +77,64 @@ function formatRupiah(val: unknown): string {
     currency: "IDR",
     maximumFractionDigits: 0,
   }).format(val);
+}
+
+interface ParticipantOrderInputProps {
+  currentPosition: number;
+  total: number;
+  onCommit: (newPosition: number) => void;
+}
+
+function ParticipantOrderInput({
+  currentPosition,
+  total,
+  onCommit,
+}: ParticipantOrderInputProps) {
+  const [val, setVal] = useState<string>(String(currentPosition));
+
+  useEffect(() => {
+    setVal(String(currentPosition));
+  }, [currentPosition]);
+
+  function handleCommit() {
+    const parsed = parseInt(val, 10);
+    if (isNaN(parsed)) {
+      setVal(String(currentPosition));
+      return;
+    }
+    const clamped = Math.min(Math.max(1, parsed), total);
+    setVal(String(clamped));
+    if (clamped !== currentPosition) {
+      onCommit(clamped);
+    }
+  }
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={val}
+      onChange={(e) => {
+        const cleaned = e.target.value.replace(/[^0-9]/g, "");
+        setVal(cleaned);
+      }}
+      onBlur={handleCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleCommit();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          setVal(String(currentPosition));
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className="h-8 w-14 text-center font-mono text-xs font-semibold"
+      aria-label={`Nomor urut peserta, saat ini ${currentPosition}`}
+      title="Ketik nomor urut lalu tekan Enter untuk memindahkan posisi"
+    />
+  );
 }
 
 export function ParticipantsManagementView({
@@ -408,6 +466,21 @@ export function ParticipantsManagementView({
 
     const copy = [...orderedSelectedParticipants];
     const [moved] = copy.splice(index, 1);
+    copy.splice(targetIndex, 0, moved);
+
+    setOrderedSelectedParticipants(copy);
+    setIsOrderDirty(true);
+  }
+
+  function moveOrderedItemToPosition(fromIndex: number, targetPosition: number) {
+    const targetIndex = Math.min(
+      Math.max(0, targetPosition - 1),
+      orderedSelectedParticipants.length - 1,
+    );
+    if (fromIndex === targetIndex) return;
+
+    const copy = [...orderedSelectedParticipants];
+    const [moved] = copy.splice(fromIndex, 1);
     copy.splice(targetIndex, 0, moved);
 
     setOrderedSelectedParticipants(copy);
@@ -774,7 +847,7 @@ export function ParticipantsManagementView({
                     Susunan Urutan Peserta Terpilih ({orderedSelectedParticipants.length})
                   </CardTitle>
                   <CardDescription>
-                    Gunakan tombol Naik dan Turun untuk mengatur nomor urut peserta pada laporan dokumen PDF dan Editor Narasi.
+                    Ketik nomor urut langsung atau gunakan tombol panah untuk mengatur susunan peserta pada laporan dokumen PDF dan Editor Narasi.
                   </CardDescription>
                 </div>
                 <Button
@@ -807,7 +880,7 @@ export function ParticipantsManagementView({
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-24">Urutan</TableHead>
+                      <TableHead className="w-20 text-center">Urutan</TableHead>
                       <TableHead>Responden &amp; NIK</TableHead>
                       <TableHead>ID TKM</TableHead>
                       <TableHead>TEAM / Wilayah</TableHead>
@@ -821,10 +894,16 @@ export function ParticipantsManagementView({
                       const norm = p.normalizedData;
                       return (
                         <TableRow key={p.id}>
-                          <TableCell>
-                            <span className="inline-flex items-center justify-center rounded-md bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">
-                              #{idx + 1}
-                            </span>
+                          <TableCell className="text-center">
+                            <div className="flex justify-center">
+                              <ParticipantOrderInput
+                                currentPosition={idx + 1}
+                                total={orderedSelectedParticipants.length}
+                                onCommit={(newPos) =>
+                                  moveOrderedItemToPosition(idx, newPos)
+                                }
+                              />
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">
@@ -894,8 +973,8 @@ export function ParticipantsManagementView({
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
-
+      </Tabs>
+
       {/* Dialog Edit Responden */}
       <Dialog
         open={Boolean(editingParticipant)}

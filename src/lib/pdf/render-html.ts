@@ -125,12 +125,19 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
   <meta charset="UTF-8" />
   <title>${snapshot.name}</title>
   <style>
+    /* Halaman 2 dan seterusnya menggunakan margin standar body dokumen */
     @page {
       size: ${page.paperSize} ${page.orientation};
-      margin-top: ${kopMarginTop}mm;
+      margin-top: ${pageMarginTop}mm;
       margin-bottom: ${page.marginsMm.bottom}mm;
-      margin-left: ${kopMarginLeft}mm;
-      margin-right: ${kopMarginRight}mm;
+      margin-left: ${pageMarginLeft}mm;
+      margin-right: ${pageMarginRight}mm;
+    }
+    /* Halaman 1 khusus menggunakan margin kop surat bila kop aktif */
+    @page :first {
+      margin-top: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
+      margin-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
+      margin-right: ${header.showKop !== false ? kopMarginRight : pageMarginRight}mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
@@ -174,14 +181,19 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         width: 210mm;
         height: 297mm;
         flex-shrink: 0;
-        padding-top: ${kopMarginTop}mm;
+        padding-top: ${pageMarginTop}mm;
         padding-bottom: ${page.marginsMm.bottom}mm;
-        padding-left: ${kopMarginLeft}mm;
-        padding-right: ${kopMarginRight}mm;
+        padding-left: ${pageMarginLeft}mm;
+        padding-right: ${pageMarginRight}mm;
         background: #ffffff;
         box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2);
         position: relative;
         overflow: hidden;
+      }
+      .sheet.first-sheet {
+        padding-top: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
+        padding-left: ${header.showKop !== false ? kopMarginLeft : pageMarginLeft}mm;
+        padding-right: ${header.showKop !== false ? kopMarginRight : pageMarginRight}mm;
       }
       .sheet-content {
         height: 100%;
@@ -205,7 +217,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         top: 0;
         left: 0;
         right: 0;
-        height: ${kopMarginTop}mm;
+        height: ${pageMarginTop}mm;
         background: repeating-linear-gradient(
           -45deg,
           rgba(59, 130, 246, 0.04),
@@ -215,6 +227,9 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
         );
         border-bottom: 1px dashed rgba(59, 130, 246, 0.35);
         pointer-events: none;
+      }
+      .sheet.first-sheet::before {
+        height: ${header.showKop !== false ? kopMarginTop : pageMarginTop}mm;
       }
       .sheet::after {
         content: "";
@@ -688,7 +703,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     function newPage() {
       pageIndex++;
       var sheet = document.createElement("div");
-      sheet.className = "sheet";
+      sheet.className = "sheet" + (pageIndex === 0 ? " first-sheet" : "");
       content = document.createElement("div");
       content.className = "sheet-content";
       sheet.appendChild(content);

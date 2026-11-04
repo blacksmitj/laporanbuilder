@@ -16,11 +16,13 @@ export async function GET(
 
     const { buffer, filename } = await generateReportPdf(id, actor, templateId);
 
+    const disposition = url.searchParams.get("preview") === "true" ? "inline" : "attachment";
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `${disposition}; filename="${filename}"`,
         "Content-Length": buffer.length.toString(),
       },
     });
@@ -63,11 +65,14 @@ export async function POST(
       overrideConfig,
     );
 
+    const url = new URL(request.url);
+    const disposition = url.searchParams.get("preview") === "true" ? "inline" : "attachment";
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `${disposition}; filename="${filename}"`,
         "Content-Length": buffer.length.toString(),
       },
     });

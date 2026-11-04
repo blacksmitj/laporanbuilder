@@ -54,16 +54,17 @@ export function ReportPreviewView({
     initialTemplateConfig,
   );
 
-  // Live HTML state
-  const [previewHtml, setPreviewHtml] = useState<string>("");
+  // Live PDF preview state
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Debounce timer reference
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentBlobUrlRef = useRef<string | null>(null);
 
-  // Fetch preview HTML whenever template configuration changes
-  const fetchPreviewHtml = async (
+  // Fetch real PDF preview whenever template configuration changes
+  const fetchPdfPreview = async (
     configToUse?: TemplateConfigurationInput | null,
   ) => {
     setIsLoadingPreview(true);
@@ -71,25 +72,31 @@ export function ReportPreviewView({
     try {
       let res: Response;
       if (configToUse) {
-        res = await fetch(`/api/reports/${reportId}/pdf/preview-html`, {
+        res = await fetch(`/api/reports/${reportId}/pdf?preview=true`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ configuration: configToUse, templateId }),
         });
       } else {
         const url = templateId
-          ? `/api/reports/${reportId}/pdf/preview-html?templateId=${templateId}&t=${Date.now()}`
-          : `/api/reports/${reportId}/pdf/preview-html?t=${Date.now()}`;
+          ? `/api/reports/${reportId}/pdf?preview=true&templateId=${templateId}&t=${Date.now()}`
+          : `/api/reports/${reportId}/pdf?preview=true&t=${Date.now()}`;
         res = await fetch(url);
       }
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error ?? "Gagal memuat pratinjau dokumen.");
+        throw new Error(errJson.error ?? "Gagal memuat pratinjau PDF.");
       }
 
-      const html = await res.text();
-      setPreviewHtml(html);
+      const blob = await res.blob();
+      const newBlobUrl = window.URL.createObjectURL(blob);
+
+      if (currentBlobUrlRef.current) {
+        window.URL.revokeObjectURL(currentBlobUrlRef.current);
+      }
+      currentBlobUrlRef.current = newBlobUrl;
+      setPdfPreviewUrl(newBlobUrl);
     } catch (err) {
       setPreviewError((err as Error).message);
     } finally {
@@ -98,11 +105,14 @@ export function ReportPreviewView({
   };
 
   useEffect(() => {
-    fetchPreviewHtml(currentConfig);
+    fetchPdfPreview(currentConfig);
 
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (currentBlobUrlRef.current) {
+        window.URL.revokeObjectURL(currentBlobUrlRef.current);
       }
     };
   }, []);
@@ -115,8 +125,8 @@ export function ReportPreviewView({
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      fetchPreviewHtml(newConfig);
-    }, 400);
+      fetchPdfPreview(newConfig);
+    }, 600);
   };
 
   const generateAndDownloadMutation = useMutation({
@@ -246,7 +256,7 @@ export function ReportPreviewView({
               isAdmin={isAdmin}
               onSaveMasterSuccess={(savedConfig) => {
                 setCurrentConfig(savedConfig);
-                fetchPreviewHtml(savedConfig);
+                fetchPdfPreview(savedConfig);
               }}
             />
           </div>
@@ -262,10 +272,10 @@ export function ReportPreviewView({
             <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 py-2.5 px-4">
               <div>
                 <CardTitle className="text-sm font-semibold">
-                  Pratinjau Dokumen Cetak A4 (Live HTML View)
+                  Pratinjau Dokumen PDF Asli (True WYSIWYG)
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Merender struktur dokumen cetak A4 sesuai pengaturan kop dan halaman di sebelah kiri.
+                  Merender dokumen PDF langsung dari engine Playwright — 100% identik dengan hasil cetak dan unduhan.
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -273,7 +283,7 @@ export function ReportPreviewView({
                   size="xs"
                   variant="outline"
                   disabled={isLoadingPreview}
-                  onClick={() => fetchPreviewHtml(currentConfig)}
+                  onClick={() => fetchPdfPreview(currentConfig)}
                 >
                   {isLoadingPreview ? (
                     <Loader2 className="size-3 animate-spin mr-1" />
@@ -302,22 +312,22 @@ export function ReportPreviewView({
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs gap-2">
                   <Loader2 className="size-8 animate-spin text-primary" />
                   <p className="text-xs text-muted-foreground font-medium">
-                    Merender pratinjau dokumen A4...
+                    Men-generate pratinjau PDF Playwright...
                   </p>
                 </div>
               )}
               {previewError ? (
                 <div className="py-20 text-center text-sm text-destructive max-w-md">
-                  <p className="font-semibold">Gagal memuat pratinjau</p>
+                  <p className="font-semibold">Gagal memuat pratinjau PDF</p>
                   <p className="text-xs text-muted-foreground mt-1">{previewError}</p>
                 </div>
-              ) : (
+              ) : pdfPreviewUrl ? (
                 <iframe
-                  srcDoc={previewHtml}
-                  title="Preview Dokumen Laporan"
+                  src={`${pdfPreviewUrl}#view=FitH`}
+                  title="Preview Dokumen PDF Laporan"
                   className="w-full h-[850px] border-none shadow-inner"
                 />
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </div>

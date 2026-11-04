@@ -39,9 +39,10 @@ import { toast } from "@/components/ui/toast";
 import { buildLpdMonitoringRegionIntro } from "@/report-types/lpd-monev-tkm/narrative-rules";
 import type { LpdMonevTkmNormalizedRow } from "@/report-types/lpd-monev-tkm/row-schema";
 import { useReportEditorStore } from "@/stores/report-editor-store";
-import { ParagraphAiDialog } from "./paragraph-ai-dialog";
-import { PolishIntroDialog } from "./polish-intro-dialog";
-import { ParticipantAiDialog } from "./participant-ai-dialog";
+import {
+  UnifiedAiPolishDialog,
+  type PolishTargetType,
+} from "./unified-ai-polish-dialog";
 
 interface SelectedParticipantItem {
   participantId: string;
@@ -104,36 +105,20 @@ export function ReportEditorView({
   const [aiGeneratingPid, setAiGeneratingPid] = useState<string | null>(null);
   const [isPolishingIntroAi, setIsPolishingIntroAi] = useState(false);
 
-  // Modal dialog state untuk generate AI per-inputan paragraf
-  const [paragraphAiModal, setParagraphAiModal] = useState<{
+  // Unified AI Polish Modal State
+  const [polishModal, setPolishModal] = useState<{
     open: boolean;
-    sectionKey: "section_a" | "section_c";
-    sectionTitle: string;
-    paragraphIndex: number;
+    targetType: PolishTargetType;
+    title: string;
+    subtitle?: string;
     currentDraft: string;
+    participantId?: string;
+    paragraphIndex?: number;
+    onApplyCallback?: (text: string) => void;
   }>({
     open: false,
-    sectionKey: "section_a",
-    sectionTitle: "Bagian A — Umum",
-    paragraphIndex: 0,
-    currentDraft: "",
-  });
-
-  // Modal dialog state untuk polish intro (poin e)
-  const [polishIntroModalOpen, setPolishIntroModalOpen] = useState(false);
-
-  // Modal dialog state untuk polish narasi per peserta
-  const [participantAiModal, setParticipantAiModal] = useState<{
-    open: boolean;
-    participantId: string;
-    participantName: string;
-    businessSector?: string;
-    businessType?: string;
-    currentDraft: string;
-  }>({
-    open: false,
-    participantId: "",
-    participantName: "",
+    targetType: "section_a",
+    title: "Poles Paragraf dengan AI",
     currentDraft: "",
   });
 
@@ -614,12 +599,21 @@ export function ReportEditorView({
                           size="xs"
                           className="h-6 text-[11px] px-2"
                           onClick={() =>
-                            setParagraphAiModal({
+                            setPolishModal({
                               open: true,
-                              sectionKey: "section_a",
-                              sectionTitle: "Bagian A — Umum",
+                              targetType: "section_a",
+                              title: `Bagian A — Paragraf #${idx + 1}`,
+                              subtitle: "Poles dan sempurnakan paragraf latar belakang / maksud penugasan.",
                               paragraphIndex: idx,
                               currentDraft: par,
+                              onApplyCallback: (text) => {
+                                updateSectionAParagraph(idx, text);
+                                toast.add({
+                                  title: "Paragraf Diperbarui",
+                                  description: `Paragraf #${idx + 1} Bagian A berhasil diperbarui.`,
+                                  type: "success",
+                                });
+                              },
                             })
                           }
                         >
@@ -681,16 +675,25 @@ export function ReportEditorView({
                         size="xs"
                         variant="secondary"
                         onClick={() => {
-                          const targetText = sectionBRegionIntro.trim();
-                          if (!targetText) {
-                            toast.add({
-                              title: "Teks Kosong",
-                              description: "Silakan isi atau sinkronkan teks poin e terlebih dahulu.",
-                              type: "error",
-                            });
-                            return;
-                          }
-                          setPolishIntroModalOpen(true);
+                          setPolishModal({
+                            open: true,
+                            targetType: "section_b_intro",
+                            title: "Bagian B — Narasi Poin e (Hasil Kunjungan Daerah)",
+                            subtitle:
+                              "Perhalus atau sempurnakan kalimat penutup hasil penugasan monitoring sebelum tabel rincian.",
+                            currentDraft: sectionBRegionIntro,
+                            onApplyCallback: (text) => {
+                              setSectionContent("section_b_summary", {
+                                ...sectionBContent,
+                                monitoringRegionIntro: text,
+                              });
+                              toast.add({
+                                title: "Narasi Poin e Diperbarui",
+                                description: "Hasil poles narasi berhasil disimpan ke draf laporan.",
+                                type: "success",
+                              });
+                            },
+                          });
                         }}
                         title="Perhalus dan sempurnakan kalimat poin e dengan AI (Preview Before-After)"
                       >
@@ -789,13 +792,21 @@ export function ReportEditorView({
                               size="xs"
                               variant="outline"
                               onClick={() =>
-                                setParticipantAiModal({
+                                setPolishModal({
                                   open: true,
+                                  targetType: "participant",
+                                  title: `Hasil Kunjungan: ${String(norm.respondentName ?? "Peserta")}`,
+                                  subtitle: `Poles narasi hasil kunjungan lapangan peserta (${norm.businessType || norm.sector || "Usaha"}).`,
                                   participantId: p.participantId,
-                                  participantName: String(norm.respondentName ?? "-"),
-                                  businessSector: norm.sector ?? undefined,
-                                  businessType: norm.businessType ?? undefined,
                                   currentDraft: currentNarrative,
+                                  onApplyCallback: (text) => {
+                                    setParticipantNarrative(p.participantId, text);
+                                    toast.add({
+                                      title: "Narasi Peserta Diperbarui",
+                                      description: `Narasi untuk ${String(norm.respondentName ?? "Peserta")} berhasil disimpan.`,
+                                      type: "success",
+                                    });
+                                  },
                                 })
                               }
                             >
@@ -859,12 +870,21 @@ export function ReportEditorView({
                           size="xs"
                           className="h-6 text-[11px] px-2"
                           onClick={() =>
-                            setParagraphAiModal({
+                            setPolishModal({
                               open: true,
-                              sectionKey: "section_c",
-                              sectionTitle: "Bagian C — Kesimpulan",
+                              targetType: "section_c",
+                              title: `Bagian C — Poin Kesimpulan #${idx + 1}`,
+                              subtitle: "Poles dan sempurnakan rumusan kesimpulan atau evaluasi pelaksanaan.",
                               paragraphIndex: idx,
                               currentDraft: par,
+                              onApplyCallback: (text) => {
+                                updateSectionCParagraph(idx, text);
+                                toast.add({
+                                  title: "Kesimpulan Diperbarui",
+                                  description: `Poin #${idx + 1} Bagian C berhasil diperbarui.`,
+                                  type: "success",
+                                });
+                              },
                             })
                           }
                         >
@@ -907,7 +927,39 @@ export function ReportEditorView({
               </CardHeader>
               <CardContent className="space-y-4">
                 <Field>
-                  <FieldLabel>Paragraf Penutup</FieldLabel>
+                  <div className="flex items-center justify-between pb-1">
+                    <FieldLabel>Paragraf Penutup</FieldLabel>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="xs"
+                      className="h-6 text-[11px] px-2"
+                      onClick={() =>
+                        setPolishModal({
+                          open: true,
+                          targetType: "closing",
+                          title: "Bagian Penutup Dokumen",
+                          subtitle:
+                            "Poles atau sempurnakan kalimat penutup kedinasan sebelum tanda tangan.",
+                          currentDraft: closingText,
+                          onApplyCallback: (text) => {
+                            setSectionContent("section_closing", {
+                              ...sectionClosingContent,
+                              closingParagraph: text,
+                            });
+                            toast.add({
+                              title: "Paragraf Penutup Diperbarui",
+                              description: "Hasil poles penutup berhasil disimpan ke draf laporan.",
+                              type: "success",
+                            });
+                          },
+                        })
+                      }
+                    >
+                      <Sparkles className="mr-1 size-3 text-primary" />
+                      Poles dengan AI
+                    </Button>
+                  </div>
                   <Textarea
                     rows={3}
                     value={closingText}
@@ -925,69 +977,21 @@ export function ReportEditorView({
         </div>
       </div>
 
-      {/* Modal Dialog AI Per Paragraf */}
-      <ParagraphAiDialog
-        open={paragraphAiModal.open}
-        onOpenChange={(open) =>
-          setParagraphAiModal((prev) => ({ ...prev, open }))
-        }
+      {/* Dialog Modular Poles dengan AI Terpadu */}
+      <UnifiedAiPolishDialog
+        open={polishModal.open}
+        onOpenChange={(open) => setPolishModal((prev) => ({ ...prev, open }))}
         reportId={reportId}
-        sectionKey={paragraphAiModal.sectionKey}
-        sectionTitle={paragraphAiModal.sectionTitle}
-        paragraphIndex={paragraphAiModal.paragraphIndex}
-        currentDraft={paragraphAiModal.currentDraft}
+        targetType={polishModal.targetType}
+        title={polishModal.title}
+        subtitle={polishModal.subtitle}
+        currentDraft={polishModal.currentDraft}
+        participantId={polishModal.participantId}
+        paragraphIndex={polishModal.paragraphIndex}
         onApply={(text) => {
-          if (paragraphAiModal.sectionKey === "section_a") {
-            updateSectionAParagraph(paragraphAiModal.paragraphIndex, text);
-          } else {
-            updateSectionCParagraph(paragraphAiModal.paragraphIndex, text);
+          if (polishModal.onApplyCallback) {
+            polishModal.onApplyCallback(text);
           }
-          toast.add({
-            title: "Teks Diterapkan",
-            description: `Paragraf #${paragraphAiModal.paragraphIndex + 1} berhasil diperbarui.`,
-            type: "success",
-          });
-        }}
-      />
-
-      {/* Modal Dialog Polish Intro Poin e */}
-      <PolishIntroDialog
-        open={polishIntroModalOpen}
-        onOpenChange={setPolishIntroModalOpen}
-        reportId={reportId}
-        currentDraft={sectionBRegionIntro}
-        onApply={(text) => {
-          setSectionContent("section_b_summary", {
-            ...sectionBContent,
-            monitoringRegionIntro: text,
-          });
-          toast.add({
-            title: "Narasi Poin e Diperbarui",
-            description: "Hasil poles narasi berhasil disimpan ke draf laporan.",
-            type: "success",
-          });
-        }}
-      />
-
-      {/* Modal Dialog Polish Narasi Peserta */}
-      <ParticipantAiDialog
-        open={participantAiModal.open}
-        onOpenChange={(open) =>
-          setParticipantAiModal((prev) => ({ ...prev, open }))
-        }
-        reportId={reportId}
-        participantId={participantAiModal.participantId}
-        participantName={participantAiModal.participantName}
-        businessSector={participantAiModal.businessSector}
-        businessType={participantAiModal.businessType}
-        currentDraft={participantAiModal.currentDraft}
-        onApply={(text) => {
-          setParticipantNarrative(participantAiModal.participantId, text);
-          toast.add({
-            title: "Narasi Peserta Diperbarui",
-            description: `Narasi untuk ${participantAiModal.participantName} berhasil diperbarui.`,
-            type: "success",
-          });
         }}
       />
     </div>
