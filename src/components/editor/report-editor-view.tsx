@@ -40,9 +40,10 @@ import { buildLpdMonitoringRegionIntro } from "@/report-types/lpd-monev-tkm/narr
 import type { LpdMonevTkmNormalizedRow } from "@/report-types/lpd-monev-tkm/row-schema";
 import { useReportEditorStore } from "@/stores/report-editor-store";
 import {
-  UnifiedAiPolishDialog,
+  PolishSidePanel,
+  type ActivePolishTarget,
   type PolishTargetType,
-} from "./unified-ai-polish-dialog";
+} from "./polish-side-panel";
 
 interface SelectedParticipantItem {
   participantId: string;
@@ -104,23 +105,6 @@ export function ReportEditorView({
 
   const [aiGeneratingPid, setAiGeneratingPid] = useState<string | null>(null);
   const [isPolishingIntroAi, setIsPolishingIntroAi] = useState(false);
-
-  // Unified AI Polish Modal State
-  const [polishModal, setPolishModal] = useState<{
-    open: boolean;
-    targetType: PolishTargetType;
-    title: string;
-    subtitle?: string;
-    currentDraft: string;
-    participantId?: string;
-    paragraphIndex?: number;
-    onApplyCallback?: (text: string) => void;
-  }>({
-    open: false,
-    targetType: "section_a",
-    title: "Poles Paragraf dengan AI",
-    currentDraft: "",
-  });
 
   // Initialize store on mount
   useEffect(() => {
@@ -379,6 +363,103 @@ export function ReportEditorView({
   const sectionClosingContent = sectionContents["section_closing"] || {};
   const closingText = String(sectionClosingContent.closingParagraph || "");
 
+  // Active AI Polish Target State for Side Panel
+  const [activePolishTarget, setActivePolishTarget] = useState<ActivePolishTarget>({
+    targetType: "section_a",
+    title: "Bagian A — Paragraf #1",
+    subtitle: "Poles dan sempurnakan paragraf latar belakang / maksud penugasan.",
+    paragraphIndex: 0,
+    currentDraft: sectionAParagraphs[0] || "",
+  });
+
+  // Otomatis sinkronkan target default saat tab berpindah jika belum cocok
+  useEffect(() => {
+    if (activeTab === "section_a") {
+      setActivePolishTarget({
+        targetType: "section_a",
+        title: "Bagian A — Paragraf #1",
+        subtitle: "Poles dan sempurnakan paragraf latar belakang / maksud penugasan.",
+        paragraphIndex: 0,
+        currentDraft: sectionAParagraphs[0] || "",
+      });
+    } else if (activeTab === "section_b") {
+      setActivePolishTarget({
+        targetType: "section_b_intro",
+        title: "Bagian B — Narasi Poin e (Hasil Kunjungan Daerah)",
+        subtitle: "Perhalus atau sempurnakan kalimat penutup hasil penugasan monitoring sebelum tabel rincian.",
+        currentDraft: sectionBRegionIntro,
+      });
+    } else if (activeTab === "participants") {
+      const firstP = participants[0];
+      if (firstP) {
+        const norm = (firstP.normalizedData || {}) as Partial<LpdMonevTkmNormalizedRow>;
+        const pNarrative =
+          participantNarratives[firstP.participantId] ??
+          firstP.narrative ??
+          firstP.rulesNarrative ??
+          "";
+        setActivePolishTarget({
+          targetType: "participant",
+          title: `Hasil Kunjungan: ${String(norm.respondentName ?? "Peserta #1")}`,
+          subtitle: `Poles narasi hasil kunjungan lapangan peserta (${norm.businessType || norm.sector || "Usaha"}).`,
+          participantId: firstP.participantId,
+          currentDraft: pNarrative,
+        });
+      }
+    } else if (activeTab === "section_c") {
+      setActivePolishTarget({
+        targetType: "section_c",
+        title: "Bagian C — Poin Kesimpulan #1",
+        subtitle: "Poles dan sempurnakan rumusan kesimpulan atau evaluasi pelaksanaan.",
+        paragraphIndex: 0,
+        currentDraft: sectionCParagraphs[0] || "",
+      });
+    } else if (activeTab === "section_closing") {
+      setActivePolishTarget({
+        targetType: "closing",
+        title: "Bagian Penutup Dokumen",
+        subtitle: "Poles atau sempurnakan kalimat penutup kedinasan sebelum tanda tangan.",
+        currentDraft: closingText,
+      });
+    }
+  }, [activeTab]);
+
+  // Keep currentDraft in activePolishTarget in-sync with live typing
+  useEffect(() => {
+    if (activePolishTarget.targetType === "section_a") {
+      const idx = activePolishTarget.paragraphIndex ?? 0;
+      const liveText = sectionAParagraphs[idx] || "";
+      if (activePolishTarget.currentDraft !== liveText) {
+        setActivePolishTarget((prev) => ({ ...prev, currentDraft: liveText }));
+      }
+    } else if (activePolishTarget.targetType === "section_b_intro") {
+      if (activePolishTarget.currentDraft !== sectionBRegionIntro) {
+        setActivePolishTarget((prev) => ({ ...prev, currentDraft: sectionBRegionIntro }));
+      }
+    } else if (activePolishTarget.targetType === "participant" && activePolishTarget.participantId) {
+      const pNarrative = participantNarratives[activePolishTarget.participantId] || "";
+      if (activePolishTarget.currentDraft !== pNarrative) {
+        setActivePolishTarget((prev) => ({ ...prev, currentDraft: pNarrative }));
+      }
+    } else if (activePolishTarget.targetType === "section_c") {
+      const idx = activePolishTarget.paragraphIndex ?? 0;
+      const liveText = sectionCParagraphs[idx] || "";
+      if (activePolishTarget.currentDraft !== liveText) {
+        setActivePolishTarget((prev) => ({ ...prev, currentDraft: liveText }));
+      }
+    } else if (activePolishTarget.targetType === "closing") {
+      if (activePolishTarget.currentDraft !== closingText) {
+        setActivePolishTarget((prev) => ({ ...prev, currentDraft: closingText }));
+      }
+    }
+  }, [
+    sectionAParagraphs,
+    sectionBRegionIntro,
+    participantNarratives,
+    sectionCParagraphs,
+    closingText,
+  ]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -450,10 +531,10 @@ export function ReportEditorView({
         pdfCount={pdfCount}
       />
 
-      {/* Editor Main Layout */}
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* Navigasi Section */}
-        <div className="space-y-2 lg:col-span-1">
+      {/* Editor Main Layout (3 Kolom: Navigasi Bagian, Form Editor, Panel Poles AI) */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Navigasi Section (Kiri) */}
+        <div className="space-y-2 lg:col-span-3">
           <Card>
             <CardHeader className="p-3">
               <CardTitle className="text-xs font-semibold uppercase text-muted-foreground">
@@ -569,8 +650,8 @@ export function ReportEditorView({
           </Card>
         </div>
 
-        {/* Content Editor Panel */}
-        <div className="lg:col-span-3">
+        {/* Content Editor Panel (Tengah) */}
+        <div className="lg:col-span-5 space-y-4">
           {/* TAB: SECTION A */}
           {activeTab === "section_a" && (
             <Card>
@@ -595,29 +676,25 @@ export function ReportEditorView({
                       <div className="flex items-center gap-1.5">
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant={
+                            activePolishTarget.targetType === "section_a" &&
+                            activePolishTarget.paragraphIndex === idx
+                              ? "default"
+                              : "secondary"
+                          }
                           size="xs"
                           className="h-6 text-[11px] px-2"
                           onClick={() =>
-                            setPolishModal({
-                              open: true,
+                            setActivePolishTarget({
                               targetType: "section_a",
                               title: `Bagian A — Paragraf #${idx + 1}`,
                               subtitle: "Poles dan sempurnakan paragraf latar belakang / maksud penugasan.",
                               paragraphIndex: idx,
                               currentDraft: par,
-                              onApplyCallback: (text) => {
-                                updateSectionAParagraph(idx, text);
-                                toast.add({
-                                  title: "Paragraf Diperbarui",
-                                  description: `Paragraf #${idx + 1} Bagian A berhasil diperbarui.`,
-                                  type: "success",
-                                });
-                              },
                             })
                           }
                         >
-                          <Sparkles className="mr-1 size-3 text-primary" />
+                          <Sparkles className="mr-1 size-3" />
                           Poles dengan AI
                         </Button>
                         <Button
@@ -633,6 +710,21 @@ export function ReportEditorView({
                     <Textarea
                       rows={3}
                       value={par}
+                      className={
+                        activePolishTarget.targetType === "section_a" &&
+                        activePolishTarget.paragraphIndex === idx
+                          ? "ring-2 ring-primary border-primary"
+                          : ""
+                      }
+                      onFocus={() =>
+                        setActivePolishTarget({
+                          targetType: "section_a",
+                          title: `Bagian A — Paragraf #${idx + 1}`,
+                          subtitle: "Poles dan sempurnakan paragraf latar belakang / maksud penugasan.",
+                          paragraphIndex: idx,
+                          currentDraft: par,
+                        })
+                      }
                       onChange={(e) =>
                         updateSectionAParagraph(idx, e.target.value)
                       }
@@ -673,31 +765,23 @@ export function ReportEditorView({
                       <Button
                         type="button"
                         size="xs"
-                        variant="secondary"
-                        onClick={() => {
-                          setPolishModal({
-                            open: true,
+                        variant={
+                          activePolishTarget.targetType === "section_b_intro"
+                            ? "default"
+                            : "secondary"
+                        }
+                        onClick={() =>
+                          setActivePolishTarget({
                             targetType: "section_b_intro",
                             title: "Bagian B — Narasi Poin e (Hasil Kunjungan Daerah)",
                             subtitle:
                               "Perhalus atau sempurnakan kalimat penutup hasil penugasan monitoring sebelum tabel rincian.",
                             currentDraft: sectionBRegionIntro,
-                            onApplyCallback: (text) => {
-                              setSectionContent("section_b_summary", {
-                                ...sectionBContent,
-                                monitoringRegionIntro: text,
-                              });
-                              toast.add({
-                                title: "Narasi Poin e Diperbarui",
-                                description: "Hasil poles narasi berhasil disimpan ke draf laporan.",
-                                type: "success",
-                              });
-                            },
-                          });
-                        }}
-                        title="Perhalus dan sempurnakan kalimat poin e dengan AI (Preview Before-After)"
+                          })
+                        }
+                        title="Poles narasi poin e dengan AI pada panel samping"
                       >
-                        <Sparkles className="mr-1 size-3 text-primary" />
+                        <Sparkles className="mr-1 size-3" />
                         Poles dengan AI
                       </Button>
                     </div>
@@ -705,6 +789,20 @@ export function ReportEditorView({
                   <Textarea
                     rows={3}
                     value={sectionBRegionIntro}
+                    className={
+                      activePolishTarget.targetType === "section_b_intro"
+                        ? "ring-2 ring-primary border-primary"
+                        : ""
+                    }
+                    onFocus={() =>
+                      setActivePolishTarget({
+                        targetType: "section_b_intro",
+                        title: "Bagian B — Narasi Poin e (Hasil Kunjungan Daerah)",
+                        subtitle:
+                          "Perhalus atau sempurnakan kalimat penutup hasil penugasan monitoring sebelum tabel rincian.",
+                        currentDraft: sectionBRegionIntro,
+                      })
+                    }
                     placeholder="Berkenaan dengan pelaksanaan kegiatan TKM Lanjutan, tim melakukan Monitoring di Kab. Pekalongan, Kota Pekalongan, Kab. Batang, Kab. Tegal dan Kab. Brebes - Provinsi Jawa Tengah;"
                     onChange={(e) =>
                       setSectionContent("section_b_summary", {
@@ -790,27 +888,23 @@ export function ReportEditorView({
                             <Button
                               type="button"
                               size="xs"
-                              variant="outline"
+                              variant={
+                                activePolishTarget.targetType === "participant" &&
+                                activePolishTarget.participantId === p.participantId
+                                  ? "default"
+                                  : "outline"
+                              }
                               onClick={() =>
-                                setPolishModal({
-                                  open: true,
+                                setActivePolishTarget({
                                   targetType: "participant",
                                   title: `Hasil Kunjungan: ${String(norm.respondentName ?? "Peserta")}`,
                                   subtitle: `Poles narasi hasil kunjungan lapangan peserta (${norm.businessType || norm.sector || "Usaha"}).`,
                                   participantId: p.participantId,
                                   currentDraft: currentNarrative,
-                                  onApplyCallback: (text) => {
-                                    setParticipantNarrative(p.participantId, text);
-                                    toast.add({
-                                      title: "Narasi Peserta Diperbarui",
-                                      description: `Narasi untuk ${String(norm.respondentName ?? "Peserta")} berhasil disimpan.`,
-                                      type: "success",
-                                    });
-                                  },
                                 })
                               }
                             >
-                              <Sparkles className="mr-1.5 size-3.5 text-primary" />
+                              <Sparkles className="mr-1.5 size-3.5" />
                               Poles dengan AI
                             </Button>
                           </div>
@@ -819,6 +913,21 @@ export function ReportEditorView({
                         <Textarea
                           rows={4}
                           value={currentNarrative}
+                          className={
+                            activePolishTarget.targetType === "participant" &&
+                            activePolishTarget.participantId === p.participantId
+                              ? "ring-2 ring-primary border-primary"
+                              : ""
+                          }
+                          onFocus={() =>
+                            setActivePolishTarget({
+                              targetType: "participant",
+                              title: `Hasil Kunjungan: ${String(norm.respondentName ?? "Peserta")}`,
+                              subtitle: `Poles narasi hasil kunjungan lapangan peserta (${norm.businessType || norm.sector || "Usaha"}).`,
+                              participantId: p.participantId,
+                              currentDraft: currentNarrative,
+                            })
+                          }
                           onChange={(e) =>
                             setParticipantNarrative(
                               p.participantId,
@@ -866,29 +975,25 @@ export function ReportEditorView({
                       <div className="flex items-center gap-1.5">
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant={
+                            activePolishTarget.targetType === "section_c" &&
+                            activePolishTarget.paragraphIndex === idx
+                              ? "default"
+                              : "secondary"
+                          }
                           size="xs"
                           className="h-6 text-[11px] px-2"
                           onClick={() =>
-                            setPolishModal({
-                              open: true,
+                            setActivePolishTarget({
                               targetType: "section_c",
                               title: `Bagian C — Poin Kesimpulan #${idx + 1}`,
                               subtitle: "Poles dan sempurnakan rumusan kesimpulan atau evaluasi pelaksanaan.",
                               paragraphIndex: idx,
                               currentDraft: par,
-                              onApplyCallback: (text) => {
-                                updateSectionCParagraph(idx, text);
-                                toast.add({
-                                  title: "Kesimpulan Diperbarui",
-                                  description: `Poin #${idx + 1} Bagian C berhasil diperbarui.`,
-                                  type: "success",
-                                });
-                              },
                             })
                           }
                         >
-                          <Sparkles className="mr-1 size-3 text-primary" />
+                          <Sparkles className="mr-1 size-3" />
                           Poles dengan AI
                         </Button>
                         <Button
@@ -904,6 +1009,21 @@ export function ReportEditorView({
                     <Textarea
                       rows={3}
                       value={par}
+                      className={
+                        activePolishTarget.targetType === "section_c" &&
+                        activePolishTarget.paragraphIndex === idx
+                          ? "ring-2 ring-primary border-primary"
+                          : ""
+                      }
+                      onFocus={() =>
+                        setActivePolishTarget({
+                          targetType: "section_c",
+                          title: `Bagian C — Poin Kesimpulan #${idx + 1}`,
+                          subtitle: "Poles dan sempurnakan rumusan kesimpulan atau evaluasi pelaksanaan.",
+                          paragraphIndex: idx,
+                          currentDraft: par,
+                        })
+                      }
                       onChange={(e) =>
                         updateSectionCParagraph(idx, e.target.value)
                       }
@@ -931,38 +1051,44 @@ export function ReportEditorView({
                     <FieldLabel>Paragraf Penutup</FieldLabel>
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant={
+                        activePolishTarget.targetType === "closing"
+                          ? "default"
+                          : "secondary"
+                      }
                       size="xs"
                       className="h-6 text-[11px] px-2"
                       onClick={() =>
-                        setPolishModal({
-                          open: true,
+                        setActivePolishTarget({
                           targetType: "closing",
                           title: "Bagian Penutup Dokumen",
                           subtitle:
                             "Poles atau sempurnakan kalimat penutup kedinasan sebelum tanda tangan.",
                           currentDraft: closingText,
-                          onApplyCallback: (text) => {
-                            setSectionContent("section_closing", {
-                              ...sectionClosingContent,
-                              closingParagraph: text,
-                            });
-                            toast.add({
-                              title: "Paragraf Penutup Diperbarui",
-                              description: "Hasil poles penutup berhasil disimpan ke draf laporan.",
-                              type: "success",
-                            });
-                          },
                         })
                       }
                     >
-                      <Sparkles className="mr-1 size-3 text-primary" />
+                      <Sparkles className="mr-1 size-3" />
                       Poles dengan AI
                     </Button>
                   </div>
                   <Textarea
                     rows={3}
                     value={closingText}
+                    className={
+                      activePolishTarget.targetType === "closing"
+                        ? "ring-2 ring-primary border-primary"
+                        : ""
+                    }
+                    onFocus={() =>
+                      setActivePolishTarget({
+                        targetType: "closing",
+                        title: "Bagian Penutup Dokumen",
+                        subtitle:
+                          "Poles atau sempurnakan kalimat penutup kedinasan sebelum tanda tangan.",
+                        currentDraft: closingText,
+                      })
+                    }
                     onChange={(e) =>
                       setSectionContent("section_closing", {
                         ...sectionClosingContent,
@@ -975,25 +1101,64 @@ export function ReportEditorView({
             </Card>
           )}
         </div>
-      </div>
 
-      {/* Dialog Modular Poles dengan AI Terpadu */}
-      <UnifiedAiPolishDialog
-        open={polishModal.open}
-        onOpenChange={(open) => setPolishModal((prev) => ({ ...prev, open }))}
-        reportId={reportId}
-        targetType={polishModal.targetType}
-        title={polishModal.title}
-        subtitle={polishModal.subtitle}
-        currentDraft={polishModal.currentDraft}
-        participantId={polishModal.participantId}
-        paragraphIndex={polishModal.paragraphIndex}
-        onApply={(text) => {
-          if (polishModal.onApplyCallback) {
-            polishModal.onApplyCallback(text);
-          }
-        }}
-      />
+        {/* Panel Samping Poles AI Selalu Terbuka (Kanan) */}
+        <div className="lg:col-span-4">
+          <PolishSidePanel
+            reportId={reportId}
+            activeTarget={activePolishTarget}
+            onApply={(text) => {
+              if (activePolishTarget.targetType === "section_a") {
+                const idx = activePolishTarget.paragraphIndex ?? 0;
+                updateSectionAParagraph(idx, text);
+                toast.add({
+                  title: "Paragraf Diperbarui",
+                  description: `Paragraf #${idx + 1} Bagian A berhasil diperbarui.`,
+                  type: "success",
+                });
+              } else if (activePolishTarget.targetType === "section_b_intro") {
+                setSectionContent("section_b_summary", {
+                  ...sectionBContent,
+                  monitoringRegionIntro: text,
+                });
+                toast.add({
+                  title: "Narasi Poin e Diperbarui",
+                  description: "Hasil poles narasi berhasil disimpan ke draf laporan.",
+                  type: "success",
+                });
+              } else if (
+                activePolishTarget.targetType === "participant" &&
+                activePolishTarget.participantId
+              ) {
+                setParticipantNarrative(activePolishTarget.participantId, text);
+                toast.add({
+                  title: "Narasi Peserta Diperbarui",
+                  description: "Hasil poles narasi peserta berhasil disimpan ke draf.",
+                  type: "success",
+                });
+              } else if (activePolishTarget.targetType === "section_c") {
+                const idx = activePolishTarget.paragraphIndex ?? 0;
+                updateSectionCParagraph(idx, text);
+                toast.add({
+                  title: "Kesimpulan Diperbarui",
+                  description: `Poin #${idx + 1} Bagian C berhasil diperbarui.`,
+                  type: "success",
+                });
+              } else if (activePolishTarget.targetType === "closing") {
+                setSectionContent("section_closing", {
+                  ...sectionClosingContent,
+                  closingParagraph: text,
+                });
+                toast.add({
+                  title: "Paragraf Penutup Diperbarui",
+                  description: "Hasil poles penutup berhasil disimpan ke draf laporan.",
+                  type: "success",
+                });
+              }
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
