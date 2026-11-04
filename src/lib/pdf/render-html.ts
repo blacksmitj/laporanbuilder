@@ -460,6 +460,7 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
     }
     .data-table {
       width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       margin: 10px 0 14px 0;
       font-size: 10pt;
@@ -469,6 +470,8 @@ export function renderReportDocumentHtml(snapshot: ReportDocumentSnapshot): stri
       border: 1px solid #000;
       padding: 5px 6px;
       vertical-align: top;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
     .data-table th {
       background-color: transparent;
@@ -786,7 +789,6 @@ file_path: D:/react/laporanbuilder/src/lib/pdf/render-html.ts    @media screen {
             )
             .join("")}
         </section>`
-      : ""}
       : ""
   }
   </div> <!-- /.page-container -->
