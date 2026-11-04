@@ -49,6 +49,9 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PhotoImagePreview } from "@/components/participants/photo-image-preview";
+import { ParticipantPhotoCell } from "@/components/participants/participant-photo-cell";
+import { PhotoPreviewDialog } from "@/components/participants/photo-preview-dialog";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Select,
@@ -194,6 +197,14 @@ export function ParticipantsManagementView({
   const [photoInputMode, setPhotoInputMode] = useState<"file" | "link">("file");
   const [photoLink, setPhotoLink] = useState("");
   const [photoKind, setPhotoKind] = useState<"business" | "activity">("activity");
+  const [previewPhoto, setPreviewPhoto] = useState<{
+    src: string;
+    rawSrc?: string | null;
+    title: string;
+    participant: ParticipantListItem;
+    kind: "business" | "activity";
+    participantDetail?: string;
+  } | null>(null);
 
   function openPhotoDialog(participant: ParticipantListItem, kind: "business" | "activity") {
     setUploadDocParticipant(participant);
@@ -540,7 +551,8 @@ export function ParticipantsManagementView({
   }
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider delay={200}>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div className="space-y-1">
@@ -822,55 +834,17 @@ export function ParticipantsManagementView({
                           </TableCell>
 
                           <TableCell>
-                            <div className="flex min-w-36 flex-col gap-1">
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  variant="outline"
-                                  size="xs"
-                                  onClick={() => openPhotoDialog(p, "business")}
-                                  className="h-7 justify-start text-xs"
-                                >
-                                  <Upload className="mr-1 size-3" /> Tempat Usaha
-                                </Button>
-                                <Badge variant={p.businessPhoto || p.businessPhotoUrl ? "secondary" : "outline"}>
-                                  {p.businessPhoto || p.businessPhotoUrl ? "Foto ada" : "Belum ada"}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  variant="outline"
-                                  size="xs"
-                                  onClick={() => openPhotoDialog(p, "activity")}
-                                  className="h-7 justify-start text-xs"
-                                >
-                                  <Upload className="mr-1 size-3" /> Kegiatan
-                                </Button>
-                                <Badge variant={p.activityPhoto || p.activityPhotoUrl ? "secondary" : "outline"}>
-                                  {p.activityPhoto || p.activityPhotoUrl ? "Foto ada" : "Belum ada"}
-                                </Badge>
-                              </div>
-                              {(p.businessPhoto || p.businessPhotoUrl) && (
-                                <PhotoImagePreview
-                                  src={p.businessPhoto
-                                    ? `/api/reports/${reportId}/participants/${p.id}/documents/${p.businessPhoto.documentId}/preview`
-                                    : p.businessPhotoUrl}
-                                  alt="Foto tempat usaha"
-                                  className="h-16 w-full rounded border object-cover"
-                                />
-                              )}
-                              {(p.activityPhoto || p.activityPhotoUrl) && (
-                                <PhotoImagePreview
-                                  src={p.activityPhoto
-                                    ? `/api/reports/${reportId}/participants/${p.id}/documents/${p.activityPhoto.documentId}/preview`
-                                    : p.activityPhotoUrl}
-                                  alt="Foto kegiatan"
-                                  className="h-16 w-full rounded border object-cover"
-                                />
-                              )}
-                              {p.documentCount > 0 && (
-                                <span className="text-[10px] text-muted-foreground">{p.documentCount} file dokumentasi</span>
-                              )}
-                            </div>
+                            <ParticipantPhotoCell
+                              participant={p}
+                              reportId={reportId}
+                              onUploadPhoto={(kind) => openPhotoDialog(p, kind)}
+                              onPreviewPhoto={(info) =>
+                                setPreviewPhoto({
+                                  ...info,
+                                  participant: p,
+                                })
+                              }
+                            />
                           </TableCell>
 
                           <TableCell className="text-right">
@@ -1394,7 +1368,21 @@ export function ParticipantsManagementView({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+        <PhotoPreviewDialog
+          isOpen={Boolean(previewPhoto)}
+          onClose={() => setPreviewPhoto(null)}
+          title={previewPhoto?.title ?? "Pratinjau Foto"}
+          participantDetail={previewPhoto?.participantDetail}
+          imageUrl={previewPhoto?.src ?? null}
+          rawUrl={previewPhoto?.rawSrc ?? null}
+          onUploadClick={() => {
+            if (previewPhoto) {
+              openPhotoDialog(previewPhoto.participant, previewPhoto.kind);
+            }
+          }}
+        />
+      </div>
+    </TooltipProvider>
   );
 }
 
